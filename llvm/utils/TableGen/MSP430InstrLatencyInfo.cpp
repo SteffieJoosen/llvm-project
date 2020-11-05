@@ -25,6 +25,7 @@
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
+#include <iostream>
 
 using namespace llvm;
 
@@ -223,7 +224,8 @@ void MSP430InstrLatencyInfo::run(raw_ostream &OS) {
 
 namespace llvm {
 
-void EmitMSP430InstrLatencyInfo(RecordKeeper &RK, raw_ostream &OS) { 
+void EmitMSP430InstrLatencyInfo(RecordKeeper &RK, raw_ostream &OS) {
+  std::cout << "Latency Info Test!" << '\n';
   MSP430InstrLatencyInfo(RK).run(OS);
 }
 
