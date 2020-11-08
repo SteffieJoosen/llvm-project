@@ -134,7 +134,7 @@ cl::opt<ActionType> Action(
                    "Generate registers bank descriptions"),
         clEnumValN(GenMSP430InstrLatencyInfo, "gen-msp430-latency-info",
                    "Generate MSP430 instruction latency information"),
-        clEnumValN(GenMSP430InstrMemTraceInfo, "gen-MSP430-memtrace-info",
+        clEnumValN(GenMSP430InstrMemTraceInfo, "gen-msp430-memtrace-info",
                     "Generate MSP430 Instruction Memory Trace Information"),
         clEnumValN(GenExegesis, "gen-exegesis",
                    "Generate llvm-exegesis tables"),

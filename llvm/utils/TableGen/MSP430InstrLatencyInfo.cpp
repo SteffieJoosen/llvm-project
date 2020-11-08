@@ -225,7 +225,6 @@ void MSP430InstrLatencyInfo::run(raw_ostream &OS) {
 namespace llvm {
 
 void EmitMSP430InstrLatencyInfo(RecordKeeper &RK, raw_ostream &OS) {
-  std::cout << "Latency Info Test!" << '\n';
   MSP430InstrLatencyInfo(RK).run(OS);
 }
 
