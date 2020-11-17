@@ -24,7 +24,6 @@
 
 #include "CodeGenTarget.h"
 #include "CodeGenDAGPatterns.h"
-#include "MSP430InstrLatencyInfo.h"
 
 #include <algorithm>
 #include <set>
@@ -35,6 +34,7 @@
 #define DEBUG_TYPE "skeleton-emitter"
 
 using namespace llvm;
+using namespace std;
 
 namespace {
 
@@ -68,15 +68,13 @@ static inline uint64_t getValueFromBitsInit(const BitsInit *B) {
   return Value;
 }
 
-static std::vector<std::string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostream &OS) {
+static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostream &OS) {
 
-  //TODO: make this an enum?
-  std::vector<std::string> special_purpose_registers = {"r0", "r1", "r2", "r3" };
 
-  std::vector<std::string> gen_instr;
-  std::string opcode = "";
+  vector<string> gen_instr;
+  string opcode = "";
   if (!II->AsmString.empty()) {
-      std::string AsmString =CodeGenInstruction::FlattenAsmStringVariants(II->AsmString, 0);
+      string AsmString =CodeGenInstruction::FlattenAsmStringVariants(II->AsmString, 0);
       unsigned i = 0;
       while (i < AsmString.length() && AsmString.at(i) != '\t') {
         opcode += AsmString.at(i);
@@ -91,42 +89,66 @@ static std::vector<std::string> ComputeMemoryTrace(const CodeGenInstruction *II,
 
     BitsInit* As = (Inst->getValueAsBitsInit("As"));
     BitsInit* Ad = Inst->getValueAsBitsInit("Ad");
+    vector<string> source_reg_instructions;
+    for (int i = 0; i < 16; i++){
+        string instr = opcode + " r" + to_string(i) + ", ";
+        source_reg_instructions.push_back(instr);
+    }
 
     switch (getValueFromBitsInit(As)) {
       case 0: // Register mode
+
+
         switch (getValueFromBitsInit(Ad)) {
           case 0:
             //INS#rr
-
-            // Special purpose registers
-            for (int i = 0; i < special_purpose_registers.size(); i++){
-              for (int j = 0; j < special_purpose_registers.size(); j++){
-                std::string instr = opcode + " " + special_purpose_registers[i] + ", " + special_purpose_registers[j];
+            // Special & General purpose registers together
+            for (int i = 0; i < 16; i++){
+              for (int j = 0; j < 16; j++){
+                string instr = source_reg_instructions[i] +"r" + to_string(j);
                 gen_instr.push_back(instr);
               }
-
             }
-
             break;
 
           case 1:
             //INS#mr
-            gen_instr.push_back("");
-        }
+            // Indexed mode, use R4 to R15
+            for (int i = 0; i < 16; i++){
+              for (int j = 4; j < 16; j++){
+                string instr = "mov r" + to_string(j) + ", #2999; ";
+                instr += source_reg_instructions[i] +"1(r" + to_string(j) + ")";
+                gen_instr.push_back(instr);
+              }
+            }
 
+            // Symbolic mode
+            for (int i = 4; i < 16; i++){
+                string instr = source_reg_instructions[i] +"3000";
+                gen_instr.push_back(instr);
+
+            }
+
+            // Absolute mode
+            for (int i = 4; i < 16; i++){
+                string instr = source_reg_instructions[i] +"&3000";
+                gen_instr.push_back(instr);
+
+            }
+        }
         break;
       case 1: // Indexed, symbolic, absolute
-      switch (getValueFromBitsInit(Ad)) {
-        case 0:
-          gen_instr.push_back("");
-      }
+        switch (getValueFromBitsInit(Ad)) {
+          case 0:
+            gen_instr.push_back("");
+        }
         gen_instr.push_back("");
         break;
       case 2:
-      switch (getValueFromBitsInit(Ad)) {
-        case 0:
-          gen_instr.push_back("");
-      }
+        switch (getValueFromBitsInit(Ad)) {
+          case 0:
+            gen_instr.push_back("");
+        }
         break;
       case 3:
         gen_instr.push_back("");
@@ -146,24 +168,11 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   emitSourceFileHeader("MSP430 Instruction Memory Traces", OS);
 
   CodeGenTarget &Target = CDP.getTargetInfo();
-  //const std::string &TargetName = Target.getName();
   StringRef Namespace = Target.getInstNamespace();
-  //Record *InstrInfo = Target.getInstructionSet();
-
-  //OS << "#ifdef GET_INSTRINFO_LATENCY_DESC\n";
-  //OS << "#undef GET_INSTRINFO_LATENCY_DESC\n";
 
   OS << "namespace llvm {\n\n";
   OS << "namespace " << Namespace << " {\n";
 
-  // TODO: Generate documentation containing the following information
-  //
-  // Table of (latency, PC-correction) entries
-  // For format-I MSP430 instructions, the instruction latency can differ
-  // with one cycle when
-  //    1) the destination addressing mode (Ad) is register mode
-  //    2) and the program counter is the destination register.
-  // This behavior is represented by the second element of a latency table entry.
 
 
   unsigned VariantCount = Target.getAsmParserVariantCount();
@@ -192,7 +201,6 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   OS << "};\n";
   OS << "} // end namespace " << Namespace << "\n";
   OS << "} // end namespace llvm\n";
-  OS << "#endif // GET_INSTRINFO_LATENCY_DESC\n";
 }
 
 namespace llvm {
