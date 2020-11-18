@@ -68,6 +68,36 @@ static inline uint64_t getValueFromBitsInit(const BitsInit *B) {
   return Value;
 }
 
+static vector<string> generate_source_operand_instructions(char addressing_mode, string opcode) {
+
+  vector<string> source_operands;
+  switch (addressing_mode) {
+    case 'r':
+      for (int i = 0; i < 16; i++){
+          string instr = opcode + " r" + to_string(i) + ", ";
+          source_operands.push_back(instr);
+      }
+      break;
+    case 'm':
+      // Indexed
+        string instr = "mov r4, #3999; ";
+        instr += opcode +" 1(r4), ";
+        source_operands.push_back(instr);
+
+
+      // Symbolic
+      string inst = opcode + " 4000, ";
+      source_operands.push_back(inst);
+
+      // Absolute
+      inst = opcode + " &4000, ";
+      source_operands.push_back(inst);
+
+
+  }
+  return source_operands;
+}
+
 static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostream &OS) {
 
 
@@ -89,11 +119,11 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
     BitsInit* As = (Inst->getValueAsBitsInit("As"));
     BitsInit* Ad = Inst->getValueAsBitsInit("Ad");
-    vector<string> source_reg_instructions;
-    for (int i = 0; i < 16; i++){
-        string instr = opcode + " r" + to_string(i) + ", ";
-        source_reg_instructions.push_back(instr);
-    }
+
+   vector<string> source_reg_instructions = generate_source_operand_instructions('r', opcode);
+   vector<string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
+
+
 
     switch (getValueFromBitsInit(As)) {
       case 0: // Register mode
@@ -114,6 +144,48 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 1:
             //INS#mr
             // Indexed mode, use R4 to R15
+            string complete_instr = source_mem_instructions[0].split("; ")[0];
+            string incomplete_instr = source_mem_instructions[0].split("; ")[1]
+            for (int i = 0; i < 16; i++){
+              for (int j = 5; j < 16; j++){
+                string instr = "mov r" + to_string(j) + ", #2999; ";
+                string new_instr += complete_instr + "; " + instr + incomplete_instr +"1(r" + to_string(j) + ")";
+                gen_instr.push_back(instr);
+              }
+            }
+
+            // Symbolic mode
+            for (int i = 4; i < 16; i++){
+                string instr = source_mem_instructions[i] +"3000";
+                gen_instr.push_back(instr);
+
+            }
+
+            // Absolute mode
+            for (int i = 4; i < 16; i++){
+                string instr = source_mem_instructions[i] +"&3000";
+                gen_instr.push_back(instr);
+
+            }
+            break;
+
+        }
+        break;
+      case 1: // Indexed, symbolic, absolute
+        switch (getValueFromBitsInit(Ad)) {
+          case 0:
+            //INS#rm
+            // TODO: wat is B?
+            // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
+            for (int i = 0; i < 14; i++){
+              for (int j = 0; j < 16; j++) {
+                string instr = source_mem_instructions[i] +"r" + to_string(j);
+                gen_instr.push_back(instr);
+              }
+            }
+            break;
+
+          case 1: // Indexed, symbolic, absolute
             for (int i = 0; i < 16; i++){
               for (int j = 4; j < 16; j++){
                 string instr = "mov r" + to_string(j) + ", #2999; ";
@@ -135,19 +207,14 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
                 gen_instr.push_back(instr);
 
             }
+            break;
+
         }
-        break;
-      case 1: // Indexed, symbolic, absolute
-        switch (getValueFromBitsInit(Ad)) {
-          case 0:
-            gen_instr.push_back("");
-        }
-        gen_instr.push_back("");
         break;
       case 2:
         switch (getValueFromBitsInit(Ad)) {
           case 0:
-            gen_instr.push_back("");
+            gen_instr.push_back("Indirect");
         }
         break;
       case 3:
@@ -174,9 +241,6 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   OS << "namespace " << Namespace << " {\n";
 
 
-
-  unsigned VariantCount = Target.getAsmParserVariantCount();
-
   OS << "static const string Generated_Instructions[][1] = {\n";
 
 
@@ -187,7 +251,7 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
     Record *Inst = II->TheDef;
     auto generated_instructions = ComputeMemoryTrace(II, OS);
 
-    for (int i = 0; i < generated_instructions.size(); i++){
+    for (unsigned i = 0; i < generated_instructions.size(); i++){
       OS << "/* " << Num << "*/ "
           << "{" << generated_instructions[i] << "}, "
           << "// " << Namespace << "::" << Inst->getName() << "\n";
