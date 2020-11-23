@@ -80,10 +80,11 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
       break;
     case 'm':
       // Indexed
-        string instr = "mov r4, #3999; ";
-        instr += opcode +" 1(r4), ";
+      for (int j = 4; j < 16; j++){
+        string instr = "mov r" + to_string(j) + ", #3999; ";
+        instr += opcode +" 1(r" + to_string(j) + "), ";
         source_operands.push_back(instr);
-
+      }
 
       // Symbolic
       string inst = opcode + " 4000, ";
@@ -144,48 +145,6 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 1:
             //INS#mr
             // Indexed mode, use R4 to R15
-            string complete_instr = source_mem_instructions[0].split("; ")[0];
-            string incomplete_instr = source_mem_instructions[0].split("; ")[1]
-            for (int i = 0; i < 16; i++){
-              for (int j = 5; j < 16; j++){
-                string instr = "mov r" + to_string(j) + ", #2999; ";
-                string new_instr += complete_instr + "; " + instr + incomplete_instr +"1(r" + to_string(j) + ")";
-                gen_instr.push_back(instr);
-              }
-            }
-
-            // Symbolic mode
-            for (int i = 4; i < 16; i++){
-                string instr = source_mem_instructions[i] +"3000";
-                gen_instr.push_back(instr);
-
-            }
-
-            // Absolute mode
-            for (int i = 4; i < 16; i++){
-                string instr = source_mem_instructions[i] +"&3000";
-                gen_instr.push_back(instr);
-
-            }
-            break;
-
-        }
-        break;
-      case 1: // Indexed, symbolic, absolute
-        switch (getValueFromBitsInit(Ad)) {
-          case 0:
-            //INS#rm
-            // TODO: wat is B?
-            // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
-            for (int i = 0; i < 14; i++){
-              for (int j = 0; j < 16; j++) {
-                string instr = source_mem_instructions[i] +"r" + to_string(j);
-                gen_instr.push_back(instr);
-              }
-            }
-            break;
-
-          case 1: // Indexed, symbolic, absolute
             for (int i = 0; i < 16; i++){
               for (int j = 4; j < 16; j++){
                 string instr = "mov r" + to_string(j) + ", #2999; ";
@@ -206,6 +165,22 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
                 string instr = source_reg_instructions[i] +"&3000";
                 gen_instr.push_back(instr);
 
+            }
+            break;
+
+        }
+        break;
+      case 1: // Indexed, symbolic, absolute
+        switch (getValueFromBitsInit(Ad)) {
+          case 0:
+            //INS#rm
+            // TODO: wat is B?
+            // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
+            for (int i = 0; i < 14; i++){
+              for (int j = 0; j < 16; j++) {
+                string instr = source_mem_instructions[i] +"r" + to_string(j);
+                gen_instr.push_back(instr);
+              }
             }
             break;
 
@@ -240,13 +215,12 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   OS << "namespace llvm {\n\n";
   OS << "namespace " << Namespace << " {\n";
 
-
+  OS << Target.getInstructionsByEnumValue()[1]->TheDef->getName() << "\n\n";
   OS << "static const string Generated_Instructions[][1] = {\n";
 
 
   unsigned Num = 0;
   for (const CodeGenInstruction *II : Target.getInstructionsByEnumValue()) {
-
 
     Record *Inst = II->TheDef;
     auto generated_instructions = ComputeMemoryTrace(II, OS);
