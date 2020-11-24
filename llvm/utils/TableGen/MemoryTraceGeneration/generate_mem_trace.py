@@ -2,8 +2,10 @@
 
 import os
 import sys
+from mem_trace_classification import classify_instruction
 
 NO_CLOCK_TICKS_BEFORE_TARGET_INSTR = 38659
+LENGTH_CLOCK_CYCLE = 50
 
 def file_len(fname):
     with open(fname) as f:
@@ -28,6 +30,28 @@ def split(string):
     list_of_words.append(word)
     return list_of_words
 
+def remove_glitches(list_of_lines):
+    list_of_lines = f.readlines()
+    new_list_of_lines = []
+    previous_line = ""
+    for line in list_of_lines:
+        if not (int(split(line)[0])%LENGTH_CLOCK_CYCLE == 0):
+            previous_data = split(previous_line)
+            current_datat = split(line)
+            previous_line = previous_data[0] + ' ' * 50 + previous_data[1] + ' ' * 4 + previous_data[2] +
+                            ' ' + previous_data[3] + ' ' + previous_data[4] + ' ' + previous_data[5] +
+                            ' ' + previous_data[6] + ' ' + previous_data[7]
+        new_list_of_lines.append(previous_line)
+    new_list_of_lines.append(previous_line)
+
+
+
+
+    list_of_lines[20] = "\t$(SANCUS_SIM) -d mem_trace.vcd $(SIMFLAGS) $<"
+
+    f = open("/home/steffie/sancus-main/sancus-examples/mem_trace/Makefile", "w")
+    f.writelines(list_of_lines)
+    f.close(
 
 def create_makefile():
     # create makefile for simulation
@@ -116,6 +140,8 @@ def generate_instruction(instr_number):
     length_of_instruction= 0
     f = open("Trace.txt")
     file_lines = f.readlines()
+    new_lines = remove_glitches(file_lines)
+    # find a new way to Instantiate this variable
     start_instruction = start_line+NO_CLOCK_TICKS_BEFORE_TARGET_INSTR*2 + 1
 
     instr_lines = []
@@ -124,14 +150,16 @@ def generate_instruction(instr_number):
     instr_to_analyse = ""
 
     for i in range(start_line,len(file_lines)):
-        current_instruction = split(file_lines[i])[1]
+        current_instruction = split(file_lines[i])[2]
         if i == start_instruction:
             instr_to_analyse = current_instruction
+            print(start_instruction)
         if current_instruction == instr_to_analyse:
             instr_lines.append(file_lines[i])
 
-    instr_full = []
+
     mclk = []
+    instr_full = []
     peripheral_mem = []
     data_mem = []
     program_mem = []
@@ -141,9 +169,9 @@ def generate_instruction(instr_number):
         instr_full.append(data[2])
         peripheral_mem.append(data[3])
         data_mem.append(data[4])
-        program_mem.append(data[5])
+        program_mem.append(data[6])
 
-    
+    # print(classify_instruction(mclk, instr_full, peripheral_mem, data_mem, program_mem))
 
     # clean up
     if os.path.exists("/home/steffie/sancus-main/sancus-examples/mem_trace"):
