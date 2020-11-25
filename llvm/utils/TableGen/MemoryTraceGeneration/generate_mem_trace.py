@@ -5,7 +5,7 @@ import sys
 from mem_trace_classification import classify_instruction
 
 NO_CLOCK_TICKS_BEFORE_TARGET_INSTR = 38659
-LENGTH_CLOCK_CYCLE = 50
+LENGTH_CLOCK_EDGE = 25
 
 def file_len(fname):
     with open(fname) as f:
@@ -31,27 +31,28 @@ def split(string):
     return list_of_words
 
 def remove_glitches(list_of_lines):
+    f = open("gkitch.txt", "r")
     list_of_lines = f.readlines()
     new_list_of_lines = []
     previous_line = ""
+    previous_was_bad_line = False
     for line in list_of_lines:
-        if not (int(split(line)[0])%LENGTH_CLOCK_CYCLE == 0):
+        if not (int(split(line)[0])%LENGTH_CLOCK_EDGE == 0):
             previous_data = split(previous_line)
-            current_datat = split(line)
-            previous_line = previous_data[0] + ' ' * 50 + previous_data[1] + ' ' * 4 + previous_data[2] +
-                            ' ' + previous_data[3] + ' ' + previous_data[4] + ' ' + previous_data[5] +
-                            ' ' + previous_data[6] + ' ' + previous_data[7]
-        new_list_of_lines.append(previous_line)
+            current_data = split(line)
+            previous_line = previous_data[0] + ' ' * 2 + previous_data[1] + ' ' * 35 + previous_data[2] +' ' + current_data[3] + ' ' + current_data[4] + ' ' + current_data[5] + ' ' + current_data[6] + ' ' + current_data[7]
+            new_list_of_lines.append(previous_line)
+            previous_was_bad_line = True
+        else:
+            if not previous_was_bad_line: new_list_of_lines.append(previous_line)
+            previous_was_bad_line = False
+            previous_line = line
+
+
     new_list_of_lines.append(previous_line)
+    return new_list_of_lines
 
 
-
-
-    list_of_lines[20] = "\t$(SANCUS_SIM) -d mem_trace.vcd $(SIMFLAGS) $<"
-
-    f = open("/home/steffie/sancus-main/sancus-examples/mem_trace/Makefile", "w")
-    f.writelines(list_of_lines)
-    f.close(
 
 def create_makefile():
     # create makefile for simulation
@@ -141,22 +142,23 @@ def generate_instruction(instr_number):
     f = open("Trace.txt")
     file_lines = f.readlines()
     new_lines = remove_glitches(file_lines)
+
     # find a new way to Instantiate this variable
-    start_instruction = start_line+NO_CLOCK_TICKS_BEFORE_TARGET_INSTR*2 + 1
+    start_instruction = NO_CLOCK_TICKS_BEFORE_TARGET_INSTR*2 + 1
 
     instr_lines = []
-    instr_full = []
-    mclk = []
     instr_to_analyse = ""
+    lines_skipped = 0
 
-    for i in range(start_line,len(file_lines)):
-        current_instruction = split(file_lines[i])[2]
-        if i == start_instruction:
-            instr_to_analyse = current_instruction
-            print(start_instruction)
-        if current_instruction == instr_to_analyse:
-            instr_lines.append(file_lines[i])
-
+    for i in range(len(new_lines)):
+        if not new_lines[i] == "":
+            current_instruction = split(new_lines[i])[2]
+            if i - lines_skipped == start_instruction:
+                instr_to_analyse = current_instruction
+            if current_instruction == instr_to_analyse:
+                instr_lines.append(new_lines[i])
+        else:
+            lines_skipped +=1
 
     mclk = []
     instr_full = []
@@ -171,7 +173,7 @@ def generate_instruction(instr_number):
         data_mem.append(data[4])
         program_mem.append(data[6])
 
-    # print(classify_instruction(mclk, instr_full, peripheral_mem, data_mem, program_mem))
+    print(classify_instruction(mclk, instr_full, peripheral_mem, data_mem, program_mem))
 
     # clean up
     if os.path.exists("/home/steffie/sancus-main/sancus-examples/mem_trace"):
