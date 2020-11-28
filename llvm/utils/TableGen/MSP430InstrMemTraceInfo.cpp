@@ -79,6 +79,13 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
           source_operands.push_back(instr);
       }
       break;
+    case 'n':
+      for (int j = 4; j < 16; j++){
+        string instr = "mov r" + to_string(j) + ", #0xFF80;";
+        instr += opcode +" @r" + to_string(j) + ", ";
+        source_operands.push_back(instr);
+      }
+      break;
     case 'm':
       // Indexed
       for (int j = 4; j < 16; j++){
@@ -124,6 +131,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
    vector<string> source_reg_instructions = generate_source_operand_instructions('r', opcode);
    vector<string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
+   vector<string> source_ind_instructions = generate_source_operand_instructions('n', opcode);
 
 
 
@@ -208,7 +216,40 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
       case 2:
         switch (getValueFromBitsInit(Ad)) {
           case 0:
-            gen_instr.push_back("Indirect");
+          //INS#rn
+          for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indirect mode
+            for (int j = 0; j < 16; j++) {
+              string instr = source_ind_instructions[i] +"r" + to_string(j);
+              gen_instr.push_back(instr);
+            }
+          }
+          break;
+          case 1:
+            //INS#mn
+            // Indexed mode, use R4 to R15
+            for (int i = 0; i < 12; i++){
+              for (int j = 4; j < 16; j++){
+                if (i != j-4){
+                  string instr = "mov r" + to_string(j) + ", #0xFF90;";
+                  instr += source_ind_instructions[i] +"1(r" + to_string(j) + ")";
+                  gen_instr.push_back(instr);
+                }
+              }
+            }
+            // Symbolic mode
+            for (int i = 0; i < 12; i++){
+              string instr = source_ind_instructions[i] +"0xFF90";
+              gen_instr.push_back(instr);
+            }
+
+          // Absolute mode
+          for (int i = 0; i < 12; i++){
+              string instr = source_reg_instructions[i] +"&0xFF90";
+              gen_instr.push_back(instr);
+
+          }
+          break;
+
         }
         break;
       case 3:
