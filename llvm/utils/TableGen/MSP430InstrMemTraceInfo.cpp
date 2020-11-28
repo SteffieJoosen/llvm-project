@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <boost/algorithm/string.hpp>
 
 #define DEBUG_TYPE "skeleton-emitter"
 
@@ -81,17 +82,17 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
     case 'm':
       // Indexed
       for (int j = 4; j < 16; j++){
-        string instr = "mov r" + to_string(j) + ", #3999; ";
+        string instr = "mov r" + to_string(j) + ", #0xFF80;";
         instr += opcode +" 1(r" + to_string(j) + "), ";
         source_operands.push_back(instr);
       }
 
       // Symbolic
-      string inst = opcode + " 4000, ";
+      string inst = opcode + " 0xFF80, ";
       source_operands.push_back(inst);
 
       // Absolute
-      inst = opcode + " &4000, ";
+      inst = opcode + " &0xFF80, ";
       source_operands.push_back(inst);
 
 
@@ -147,7 +148,8 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             // Indexed mode, use R4 to R15
             for (int i = 0; i < 16; i++){
               for (int j = 4; j < 16; j++){
-                string instr = "mov r" + to_string(j) + ", #2999; ";
+
+                string instr = "mov r" + to_string(j) + ", #0xFF90;";
                 instr += source_reg_instructions[i] +"1(r" + to_string(j) + ")";
                 gen_instr.push_back(instr);
               }
@@ -155,14 +157,14 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
             // Symbolic mode
             for (int i = 4; i < 16; i++){
-                string instr = source_reg_instructions[i] +"3000";
+                string instr = source_reg_instructions[i] +"0xFF90";
                 gen_instr.push_back(instr);
 
             }
 
             // Absolute mode
             for (int i = 4; i < 16; i++){
-                string instr = source_reg_instructions[i] +"&3000";
+                string instr = source_reg_instructions[i] +"&0xFF90";
                 gen_instr.push_back(instr);
 
             }
@@ -175,15 +177,32 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 0:
             //INS#rm
             // TODO: wat is B?
-            // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
-            for (int i = 0; i < 14; i++){
+            for (int i = 0; i < 14; i++){ // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
               for (int j = 0; j < 16; j++) {
                 string instr = source_mem_instructions[i] +"r" + to_string(j);
                 gen_instr.push_back(instr);
               }
             }
             break;
+          case 1:
+          //INS#mm
+          // Indexed mode, use R4 to R15: on index i, register i+4 is used for indexed mode
+          for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indexed mode
+            for (int j = 4; j < 16; j++){
+              if (i <12) {
+                if (i != j-4) {
+                  string instr = "mov r" + to_string(j) + ", #0xFF90;";
+                  instr += source_mem_instructions[i] + "1(r" + to_string(j) + ")";
+                  gen_instr.push_back(instr);
+                }
 
+              } else {
+                string instr = "mov r" + to_string(j) + ", #0xFF90;";
+                instr += source_mem_instructions[i] + "1(r" + to_string(j) + ")";
+                gen_instr.push_back(instr);
+              }
+            }
+          }
         }
         break;
       case 2:
@@ -193,7 +212,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
         }
         break;
       case 3:
-        gen_instr.push_back("");
+        gen_instr.push_back("PostIncrement");
         break;
     }
 
@@ -215,7 +234,6 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   OS << "namespace llvm {\n\n";
   OS << "namespace " << Namespace << " {\n";
 
-  OS << Target.getInstructionsByEnumValue()[1]->TheDef->getName() << "\n\n";
   OS << "static const string Generated_Instructions[][1] = {\n";
 
 

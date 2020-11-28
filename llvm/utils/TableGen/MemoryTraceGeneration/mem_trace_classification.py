@@ -1,6 +1,6 @@
-def classify_instruction(mclk, instr_full, peripheral_mem, data_mem, program_mem):
-    instr_length = str(len(mclk)/2)
+def classify_instruction(last_instr, mclk, instr_full, peripheral_mem, data_mem, program_mem):
+    instr_length = str(int(len(mclk)/2))
     peripheral = ''.join(peripheral_mem)
     data = ''.join(data_mem)
     prgr = ''.join(program_mem)
-    return instr_length + "." + peripheral + "." + data + "." + prgr
+    return "( "+ last_instr + " ) \t" + "length | peripheral | data | prgr : " + instr_length + " | " + peripheral + " | " + data + " | " + prgr
