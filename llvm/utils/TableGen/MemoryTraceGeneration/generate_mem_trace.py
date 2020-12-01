@@ -2,6 +2,7 @@
 
 import os
 import sys
+import binascii
 from mem_trace_classification import classify_instruction
 
 NO_CLOCK_TICKS_BEFORE_TARGET_INSTR = 38659
@@ -31,8 +32,6 @@ def split(string):
     return list_of_words
 
 def remove_glitches(list_of_lines):
-    f = open("gkitch.txt", "r")
-    list_of_lines = f.readlines()
     new_list_of_lines = []
     previous_line = ""
     previous_was_bad_line = False
@@ -52,7 +51,31 @@ def remove_glitches(list_of_lines):
     new_list_of_lines.append(previous_line)
     return new_list_of_lines
 
+def find_instruction_lines_vcd(new_lines, start_instruction, no_instr_to_analyse):
+    instr_lines = []
+    instr_to_analyse = ""
+    lines_skipped = 0
+    no_instr_found = 0
+    start_last_instr = 0
+    for i in range(len(new_lines)):
+        if not new_lines[i] == "":
+            current_instruction = split(new_lines[i])[2]
+            if i - lines_skipped == start_instruction:
+                no_instr_found = 1
+                instr_to_analyse = current_instruction
+            if 1 <= no_instr_found <= no_instr_to_analyse:
+                if current_instruction == instr_to_analyse:
+                    instr_lines.append(new_lines[i])
+                else:
+                    no_instr_found +=1
+                    instr_to_analyse = current_instruction
+                    if no_instr_found <= no_instr_to_analyse:
+                        instr_lines.append(new_lines[i])
+                        start_last_instr = len(instr_lines)-1
+        else:
+            lines_skipped +=1
 
+    return instr_lines, start_last_instr
 
 def create_makefile():
     # create makefile for simulation
@@ -68,7 +91,6 @@ def create_makefile():
     f = open("/home/steffie/sancus-main/sancus-examples/mem_trace/Makefile", "w")
     f.writelines(list_of_lines)
     f.close()
-
 
 def create_c_file(instr):
     # create .c file for simulation
@@ -89,7 +111,8 @@ def create_c_file(instr):
     f.write("    msp430_io_init();\r\n")
     f.write("sancus_enable(&foo);\r\n")
     f.write("__asm__ __volatile__(\r\n")
-    f.write("    \"add r5, r6\"\r\n")
+    for asm in instr:
+        f.write("    \"" + asm + "\\n\\t\"\r\n")
     f.write(");\r\n")
     f.write("\r\n")
     f.write("}\r\n")
@@ -109,28 +132,26 @@ def search_line(file_name, leading_chars):
         line_number+=1
 
 
-def generate_instruction(instr_number):
-    # Read instruction to generate memory tace for
-    # This assumes that the sllvm github repository is cloned into your home directory
-    with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.s') as f:
-        all_instructions = [line.rstrip('\n') for line in f]
+def generate_instruction(all_instr):
+    if all_instr == "": return
 
-    instr = all_instructions[instr_number].split('{')[1].split('}')[0].split("; ")
+    no_instr_to_analyse = len(all_instr)
+
 
     os.system('cd ~/sancus-main/sancus-examples && mkdir mem_trace')
 
-    create_c_file(instr)
+    create_c_file(all_instr)
     create_makefile()
 
     # run the simulation
     os.system('cd ~/sancus-main/sancus-examples/mem_trace && make sim')
 
     os.system('echo \"--------------------------------------\"')
-    os.system('echo \"---- TEX FILE IS BEING GENERATED -----\"')
-    os.system('echo \"--------------------------------------\"')
+    os.system('echo \"----- VCD FILE IS BEING ANALYSED -----\"')
+    os.system('echo \"--------------------------------------\"\n')
 
     # run the vcdvis script to generate the tex file containing the traces
-    os.system('cp mem_trace.vcd /home/steffie/vcdvcd/mem_trace.vcd')
+    os.system('cp /home/steffie/sancus-main/sancus-examples/mem_trace/mem_trace.vcd /home/steffie/vcdvcd/mem_trace.vcd')
     os.system('cd ~/vcdvcd && '
               './vcdcat -x mem_trace.vcd TOP.tb_openMSP430.mclk TOP.tb_openMSP430.inst_full TOP.tb_openMSP430.dut.mem_backbone_0.eu_pmem_en TOP.tb_openMSP430.dut.mem_backbone_0.eu_dmem_en TOP.tb_openMSP430.dut.mem_backbone_0.fe_pmem_en'
               ' > ' + sys.path[0] + '/Trace.txt')
@@ -141,71 +162,91 @@ def generate_instruction(instr_number):
     length_of_instruction= 0
     f = open("Trace.txt")
     file_lines = f.readlines()
-    new_lines = remove_glitches(file_lines)
+    new_lines = remove_glitches(file_lines[start_line:len(file_lines)])
 
     # find a new way to Instantiate this variable
     start_instruction = NO_CLOCK_TICKS_BEFORE_TARGET_INSTR*2 + 1
 
-    instr_lines = []
-    instr_to_analyse = ""
-    lines_skipped = 0
+    result = find_instruction_lines_vcd(new_lines, start_instruction, no_instr_to_analyse)
+    instr_lines = result[0]
+    start_last_instr = result[1]
 
-    for i in range(len(new_lines)):
-        if not new_lines[i] == "":
-            current_instruction = split(new_lines[i])[2]
-            if i - lines_skipped == start_instruction:
-                instr_to_analyse = current_instruction
-            if current_instruction == instr_to_analyse:
-                instr_lines.append(new_lines[i])
-        else:
-            lines_skipped +=1
+
 
     mclk = []
     instr_full = []
     peripheral_mem = []
     data_mem = []
     program_mem = []
-    for instr_string in instr_lines:
-        data = split(instr_string)
+    for i in range(start_last_instr, len(instr_lines)):
+        data = split(instr_lines[i])
         mclk.append(data[1])
         instr_full.append(data[2])
         peripheral_mem.append(data[3])
         data_mem.append(data[4])
         program_mem.append(data[6])
 
-    print(classify_instruction(mclk, instr_full, peripheral_mem, data_mem, program_mem))
 
     # clean up
     if os.path.exists("/home/steffie/sancus-main/sancus-examples/mem_trace"):
         os.system("rm -r /home/steffie/sancus-main/sancus-examples/mem_trace")
+    if os.path.exists("/home/steffie/vcdvcd/mem_trace.vcd"):
+        os.system("rm /home/steffie/vcdvcd/mem_trace.vcd")
+    if os.path.exists("mem_trace.c"):
+        os.system("rm mem_trace.c")
+
+    # os.system('rm -r ')
+
+    instr_class = classify_instruction(all_instr[len(all_instr)-1], mclk, instr_full, peripheral_mem, data_mem, program_mem)
+
+    return all_instr[len(all_instr)-1], instr_class
 
 
-    return
-
-
-if os.path.exists("traces.tex"):
-    os.remove("traces.tex")
+if os.path.exists("classes.txt"):
+    os.remove("classes.txt")
 if os.path.exists("Traces.tex"):
     os.remove("Traces.tex")
 
 if os.path.exists("mem_trace.c"):
     os.remove("mem_trace.c")
 
-# create tex file to dump the traces in
+# create txt file to dump the classes in
 # -------------------------------------
 
-traces_file = open("traces.tex", "w+")
+traces_file = open("classes.txt", "w+")
 
-traces_file.write("\documentclass{article}\r\n")
-traces_file.write("\\usepackage{tikz}\r\n")
-traces_file.write("\r\n")
-traces_file.write("\\begin{document}\r\n")
+traces_file.write("This file contains all the instructions grouped by their memory access classes\n\n")
+traces_file.write("______________________________________________________________________________\n\n")
 
 traces_file.close()
 
-generate_instruction(258)
+# Read instruction to generate memory tace for
+# This assumes that the sllvm github repository is cloned into your home directory
+with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc') as f:
+    all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
+# len(all_instructions)) = 29883
+no_instructions_testing = len(all_instructions)-29638
+found_classes = dict()
+result_class = ""
 
-traces_file = open("traces.tex", "a")
-
-traces_file.write("\\end{document}\r\n")
+for i in range(no_instructions_testing):
+    all_instr = ""
+    if all_instructions[i] != "":
+        all_instr = all_instructions[i].split('{')[1].split('}')[0].split(";")
+        res = generate_instruction(all_instr)
+        assembly_string = res[0]
+        result_class = res[1]
+        if result_class!= "" :
+            if result_class in found_classes.keys():
+                found_classes[result_class].append(assembly_string)
+            else:
+                found_classes[result_class] = [assembly_string]
+print(found_classes)
+traces_file = open("classes.txt", "a")
+for mem_trace_class in found_classes.keys():
+    traces_file.write("------------------------------------------------------------\n")
+    traces_file.write("  " + mem_trace_class + "\n")
+    traces_file.write("------------------------------------------------------------\n")
+    for assembly in found_classes[mem_trace_class]:
+        traces_file.write("\t" + assembly + "\n")
 traces_file.close()

@@ -81,7 +81,7 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
       break;
     case 'n':
       for (int j = 4; j < 16; j++){
-        string instr = "mov r" + to_string(j) + ", #0xFF80;";
+        string instr = "mov #0xFF80, r" + to_string(j) + ";";
         instr += opcode +" @r" + to_string(j) + ", ";
         source_operands.push_back(instr);
       }
@@ -89,7 +89,7 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
     case 'm':
       // Indexed
       for (int j = 4; j < 16; j++){
-        string instr = "mov r" + to_string(j) + ", #0xFF80;";
+        string instr = "mov #0xFF80, r" + to_string(j) + ";";
         instr += opcode +" 1(r" + to_string(j) + "), ";
         source_operands.push_back(instr);
       }
@@ -157,7 +157,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             for (int i = 0; i < 16; i++){
               for (int j = 4; j < 16; j++){
 
-                string instr = "mov r" + to_string(j) + ", #0xFF90;";
+                string instr = "mov #0xFF90, r" + to_string(j) + ";";
                 instr += source_reg_instructions[i] +"1(r" + to_string(j) + ")";
                 gen_instr.push_back(instr);
               }
@@ -199,13 +199,13 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             for (int j = 4; j < 16; j++){
               if (i <12) {
                 if (i != j-4) {
-                  string instr = "mov r" + to_string(j) + ", #0xFF90;";
+                  string instr = "mov #0xFF90, r" + to_string(j) + ";";
                   instr += source_mem_instructions[i] + "1(r" + to_string(j) + ")";
                   gen_instr.push_back(instr);
                 }
 
               } else {
-                string instr = "mov r" + to_string(j) + ", #0xFF90;";
+                string instr = "mov #0xFF90, r" + to_string(j) + ";";
                 instr += source_mem_instructions[i] + "1(r" + to_string(j) + ")";
                 gen_instr.push_back(instr);
               }
@@ -230,7 +230,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             for (int i = 0; i < 12; i++){
               for (int j = 4; j < 16; j++){
                 if (i != j-4){
-                  string instr = "mov r" + to_string(j) + ", #0xFF90;";
+                  string instr = "mov #0xFF90, r" + to_string(j) + ";";
                   instr += source_ind_instructions[i] +"1(r" + to_string(j) + ")";
                   gen_instr.push_back(instr);
                 }
@@ -253,7 +253,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
         }
         break;
       case 3:
-        gen_instr.push_back("PostIncrement");
+        gen_instr.push_back("nothing yet");
         break;
     }
 

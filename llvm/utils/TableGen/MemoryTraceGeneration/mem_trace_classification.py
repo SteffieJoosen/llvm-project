@@ -3,4 +3,4 @@ def classify_instruction(last_instr, mclk, instr_full, peripheral_mem, data_mem,
     peripheral = ''.join(peripheral_mem)
     data = ''.join(data_mem)
     prgr = ''.join(program_mem)
-    return "( "+ last_instr + " ) \t" + "length | peripheral | data | prgr : " + instr_length + " | " + peripheral + " | " + data + " | " + prgr
+    return instr_length + " | " + peripheral + " | " + data + " | " + prgr
