@@ -129,9 +129,11 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
     BitsInit* As = (Inst->getValueAsBitsInit("As"));
     BitsInit* Ad = Inst->getValueAsBitsInit("Ad");
 
-   vector<string> source_reg_instructions = generate_source_operand_instructions('r', opcode);
-   vector<string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
-   vector<string> source_ind_instructions = generate_source_operand_instructions('n', opcode);
+    // For instructions that use register, these vectors are for generating the instructions
+    // using all combinations of them
+    vector<string> source_reg_instructions = generate_source_operand_instructions('r', opcode);
+    vector<string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
+    vector<string> source_ind_instructions = generate_source_operand_instructions('n', opcode);
 
 
 
@@ -142,40 +144,50 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
         switch (getValueFromBitsInit(Ad)) {
           case 0:
             //INS#rr
+            //R4 and R5 used
+            gen_instr.push_back(opcode + " r4, r5");
             // Special & General purpose registers together
-            for (int i = 0; i < 16; i++){
+            /*for (int i = 0; i < 16; i++){
               for (int j = 0; j < 16; j++){
                 string instr = source_reg_instructions[i] +"r" + to_string(j);
                 gen_instr.push_back(instr);
               }
-            }
+            }*/
             break;
 
           case 1:
             //INS#mr
+            //R4 and R5 used
+            // Indexed
+            string instr = "mov #0xFF90, r5;";
+            gen_instr.push_back(instr + opcode + " r4, 1(r5)");
             // Indexed mode, use R4 to R15
-            for (int i = 0; i < 16; i++){
+            /*for (int i = 0; i < 16; i++){
               for (int j = 4; j < 16; j++){
 
                 string instr = "mov #0xFF90, r" + to_string(j) + ";";
                 instr += source_reg_instructions[i] +"1(r" + to_string(j) + ")";
                 gen_instr.push_back(instr);
               }
-            }
+            }*/
 
             // Symbolic mode
-            for (int i = 4; i < 16; i++){
+            // R4 used
+            gen_instr.push_back(opcode + " r4, 0xFF90");
+            /*for (int i = 4; i < 16; i++){
                 string instr = source_reg_instructions[i] +"0xFF90";
                 gen_instr.push_back(instr);
 
-            }
+            }*/
 
             // Absolute mode
-            for (int i = 4; i < 16; i++){
+            // R4 used
+            gen_instr.push_back(opcode + " r4, &0xFF90");
+            /*for (int i = 4; i < 16; i++){
                 string instr = source_reg_instructions[i] +"&0xFF90";
                 gen_instr.push_back(instr);
 
-            }
+            }*/
             break;
 
         }
@@ -185,49 +197,74 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 0:
             //INS#rm
             // TODO: wat is B?
-            for (int i = 0; i < 14; i++){ // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
+            gen_instr.push_back("mov #0xFF80, r4;" + opcode +  " 1(r4), r5");
+            gen_instr.push_back(opcode + " 0xFF80, r4");
+            gen_instr.push_back(opcode + " &0xFF80, r4");
+            /*for (int i = 0; i < 14; i++){ // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
               for (int j = 0; j < 16; j++) {
                 string instr = source_mem_instructions[i] +"r" + to_string(j);
                 gen_instr.push_back(instr);
               }
-            }
+            }*/
             break;
           case 1:
-          //INS#mm
-          // Indexed mode, use R4 to R15: on index i, register i+4 is used for indexed mode
-          for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indexed mode
-            for (int j = 4; j < 16; j++){
-              if (i <12) {
-                if (i != j-4) {
+            //INS#mm
+            std::vector<string> v;
+            // Indexed source mode
+            v.push_back("mov #0xFF80, r4;" + opcode +  " 1(r4), ");
+            // Symbolic source mode
+            v.push_back(opcode + " 0xFF80, ");
+            // Absolute mode
+            v.push_back(opcode + " &0xFF80, ");
+
+            // Indexed dest mode
+            for (int i = 0; i < 3; i++) {
+              gen_instr.push_back("mov #0xFF90, r5;"+ v[i] + "1(r5)");
+              gen_instr.push_back(v[i] + "0xFF90");
+              gen_instr.push_back(v[i] + "&0xFF90");
+            }
+
+            // Indexed mode, use R4 to R15: on index i, register i+4 is used for indexed mode
+            /*for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indexed mode
+              for (int j = 4; j < 16; j++){
+                if (i <12) {
+                  if (i != j-4) {
+                    string instr = "mov #0xFF90, r" + to_string(j) + ";";
+                    instr += source_mem_instructions[i] + "1(r" + to_string(j) + ")";
+                    gen_instr.push_back(instr);
+                  }
+
+                } else {
                   string instr = "mov #0xFF90, r" + to_string(j) + ";";
                   instr += source_mem_instructions[i] + "1(r" + to_string(j) + ")";
                   gen_instr.push_back(instr);
                 }
-
-              } else {
-                string instr = "mov #0xFF90, r" + to_string(j) + ";";
-                instr += source_mem_instructions[i] + "1(r" + to_string(j) + ")";
-                gen_instr.push_back(instr);
               }
-            }
+            }*/
+            break;
           }
-        }
         break;
       case 2:
         switch (getValueFromBitsInit(Ad)) {
           case 0:
+            gen_instr.push_back("mov #0xFF80, r4;" + opcode + " @r4, r5");
           //INS#rn
-          for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indirect mode
+          /*for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indirect mode
             for (int j = 0; j < 16; j++) {
               string instr = source_ind_instructions[i] +"r" + to_string(j);
               gen_instr.push_back(instr);
             }
-          }
+          }*/
           break;
           case 1:
             //INS#mn
+            gen_instr.push_back("mov #0xFF90, r5;mov #0xFF80, r4;" + opcode + " @r4, 1(r5)");
+            gen_instr.push_back("mov #0xFF80, r4;" + opcode + " @r4, 0xFF90");
+            gen_instr.push_back("mov #0xFF80, r4;" + opcode + " @r4, &0xFF90");
+
+
             // Indexed mode, use R4 to R15
-            for (int i = 0; i < 12; i++){
+            /*for (int i = 0; i < 12; i++){
               for (int j = 4; j < 16; j++){
                 if (i != j-4){
                   string instr = "mov #0xFF90, r" + to_string(j) + ";";
@@ -247,7 +284,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
               string instr = source_reg_instructions[i] +"&0xFF90";
               gen_instr.push_back(instr);
 
-          }
+          }*/
           break;
 
         }
