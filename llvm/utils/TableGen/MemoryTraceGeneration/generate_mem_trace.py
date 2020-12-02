@@ -224,8 +224,14 @@ traces_file.close()
 # This assumes that the sllvm github repository is cloned into your home directory
 with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc') as f:
     all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
-# len(all_instructions)) = 29883
-no_instructions_testing = len(all_instructions)-29638
+
+print("len(all_instructions) = " + str(len(all_instructions)))
+no_instructions_testing = int(len(all_instructions)/3)
+print("The instructions that are about to be simulated")
+for i in range(no_instructions_testing):
+    if all_instructions[i] != "":
+        print(all_instructions[i])
+
 found_classes = dict()
 result_class = ""
 
@@ -241,7 +247,10 @@ for i in range(no_instructions_testing):
                 found_classes[result_class].append(assembly_string)
             else:
                 found_classes[result_class] = [assembly_string]
-print(found_classes)
+    os.system('echo \"--------------------------------------\"')
+    os.system('echo \"----- | '+ str(int((i+1)/no_instructions_testing *100)) +'% | -----\"')
+    os.system('echo \"--------------------------------------\"\n')
+
 traces_file = open("classes.txt", "a")
 for mem_trace_class in found_classes.keys():
     traces_file.write("------------------------------------------------------------\n")
