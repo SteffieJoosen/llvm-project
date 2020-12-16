@@ -313,22 +313,24 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           break;
           // 16 december: tot hier geraakt
         case 1:
-          latency = (OpCode == 4 || OpCode == 5) ? 5 : 4;
+        gen_instr.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4)");
+        gen_instr.push_back(opcode + " 0x0202");
+        gen_instr.push_back(opcode + " &0x0202");
           break;
         case 2:
-          latency = (OpCode == 4 || OpCode == 5) ? 4 : 3;
+          gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4");
           break;
         case 3:
           // Opcodes: PUSH=4, CALL=5
           switch (OpCode) {
             case 4:
-              latency = Inst->getValue("imm") ? 4 : 5;
+              gen_instr.push_back("nothing yet");
               break;
             case 5:
-              latency = 5;
+              gen_instr.push_back("nothing yet");
               break;
             default:
-              latency = 4;
+              gen_instr.push_back("nothing yet");
               break; // RRA, RRC, SWPB, SXT
           }
           break;
