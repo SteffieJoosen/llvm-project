@@ -188,74 +188,64 @@ def generate_instruction(all_instr):
 
 
     # clean up
-    if os.path.exists("/home/steffie/sancus-main/sancus-examples/mem_trace"):
+    if os.path.isdir("/home/steffie/sancus-main/sancus-examples/mem_trace"):
         os.system("rm -r /home/steffie/sancus-main/sancus-examples/mem_trace")
     if os.path.exists("/home/steffie/vcdvcd/mem_trace.vcd"):
         os.system("rm /home/steffie/vcdvcd/mem_trace.vcd")
     if os.path.exists("mem_trace.c"):
         os.system("rm mem_trace.c")
+    if os.path.exists("Traces.tex"):
+        os.remove("Traces.tex")
 
-    # os.system('rm -r ')
 
     instr_class = classify_instruction(all_instr[len(all_instr)-1], mclk, instr_full, peripheral_mem, data_mem, program_mem)
 
     return all_instr[len(all_instr)-1], instr_class
 
 
-if os.path.exists("classes.txt"):
-    os.remove("classes.txt")
-if os.path.exists("Traces.tex"):
-    os.remove("Traces.tex")
 
-if os.path.exists("mem_trace.c"):
-    os.remove("mem_trace.c")
 
-# create txt file to dump the classes in
-# -------------------------------------
+# create directory file to dump the class files in
+# ------------------------------------------------
+if os.path.isdir("/home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTaceGeneration/Classes"):
+    print("Ik kom hier")
+    os.system("rm -r /home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTaceGeneration/Classes")
 
-traces_file = open("classes.txt", "w+")
-
-traces_file.write("This file contains all the instructions grouped by their memory access classes\n\n")
-traces_file.write("______________________________________________________________________________\n\n")
-
-traces_file.close()
+os.system("mkdir Classes")
 
 # Read instruction to generate memory tace for
-# This assumes that the sllvm github repository is cloned into your home directory
+# This assumes the sllvm github repository is cloned into your home directory
 with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc') as f:
     all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
 
 print("len(all_instructions) = " + str(len(all_instructions)))
-no_instructions_testing = int(len(all_instructions)/3)
+no_instructions_testing = int(len(all_instructions) - 253)
 print("The instructions that are about to be simulated")
-for i in range(no_instructions_testing):
+for i in range(676,no_instructions_testing):
     if all_instructions[i] != "":
         print(all_instructions[i])
 
-found_classes = dict()
+found_classes = list()
 result_class = ""
 
-for i in range(no_instructions_testing):
+for i in range(676,no_instructions_testing):
     all_instr = ""
     if all_instructions[i] != "":
         all_instr = all_instructions[i].split('{')[1].split('}')[0].split(";")
+        print("Instruction simulated: " + str(all_instr))
         res = generate_instruction(all_instr)
         assembly_string = res[0]
         result_class = res[1]
         if result_class!= "" :
-            if result_class in found_classes.keys():
-                found_classes[result_class].append(assembly_string)
+            file_name = "Classes/" + result_class + ".txt"
+            if result_class in found_classes:
+                class_file = open(file_name, "a")
             else:
-                found_classes[result_class] = [assembly_string]
-    os.system('echo \"--------------------------------------\"')
-    os.system('echo \"----- | '+ str(int((i+1)/no_instructions_testing *100)) +'% | -----\"')
-    os.system('echo \"--------------------------------------\"\n')
+                class_file = open(file_name, "w+")
 
-traces_file = open("classes.txt", "a")
-for mem_trace_class in found_classes.keys():
-    traces_file.write("------------------------------------------------------------\n")
-    traces_file.write("  " + mem_trace_class + "\n")
-    traces_file.write("------------------------------------------------------------\n")
-    for assembly in found_classes[mem_trace_class]:
-        traces_file.write("\t" + assembly + "\n")
-traces_file.close()
+            class_file.write(assembly_string + "\n")
+            class_file.close()
+
+    os.system('echo \"--------------------------------------\"')
+    os.system('echo \"------- | '+ str(int((i-676+1)/(no_instructions_testing-676) *100)) +'% | -------\"')
+    os.system('echo \"--------------------------------------\"\n')
