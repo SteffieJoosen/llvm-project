@@ -204,12 +204,10 @@ def generate_instruction(all_instr):
 
 
 
-
 # create directory file to dump the class files in
 # ------------------------------------------------
-if os.path.isdir("/home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTaceGeneration/Classes"):
-    print("Ik kom hier")
-    os.system("rm -r /home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTaceGeneration/Classes")
+if os.path.isdir("/home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTraceGeneration/Classes"):
+    os.system("rm -r /home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTraceGeneration/Classes")
 
 os.system("mkdir Classes")
 
@@ -219,16 +217,16 @@ with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTr
     all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
 
 print("len(all_instructions) = " + str(len(all_instructions)))
-no_instructions_testing = int(len(all_instructions) - 253)
+no_instructions_testing = int(len(all_instructions) - 845)
 print("The instructions that are about to be simulated")
-for i in range(676,no_instructions_testing):
+for i in range(200,no_instructions_testing):
     if all_instructions[i] != "":
         print(all_instructions[i])
 
 found_classes = list()
 result_class = ""
 
-for i in range(676,no_instructions_testing):
+for i in range(200,no_instructions_testing):
     all_instr = ""
     if all_instructions[i] != "":
         all_instr = all_instructions[i].split('{')[1].split('}')[0].split(";")
@@ -245,7 +243,6 @@ for i in range(676,no_instructions_testing):
 
             class_file.write(assembly_string + "\n")
             class_file.close()
-
     os.system('echo \"--------------------------------------\"')
-    os.system('echo \"------- | '+ str(int((i-676+1)/(no_instructions_testing-676) *100)) +'% | -------\"')
+    os.system('echo \"------- | '+ str(int((i-0+1)/(no_instructions_testing-0) *100)) +'% | -------\"')
     os.system('echo \"--------------------------------------\"\n')

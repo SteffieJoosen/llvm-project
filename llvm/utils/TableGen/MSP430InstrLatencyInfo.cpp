@@ -110,7 +110,8 @@ static std::pair<unsigned, unsigned> ComputeLatency(Record *Inst) {
         }
       }
     }
-  } else if (   Inst->isSubClassOf("IIForm")
+  }
+  else if (   Inst->isSubClassOf("IIForm")
              || Inst->isSubClassOf("II16c")
              || Inst->isSubClassOf("II8c") ) {
     auto OpCode = getValueFromBitsInit(Inst->getValueAsBitsInit("Opcode"));

@@ -112,8 +112,9 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
   vector<string> gen_instr;
   string opcode = "";
+  string AsmString = "";
   if (!II->AsmString.empty()) {
-      string AsmString = CodeGenInstruction::FlattenAsmStringVariants(II->AsmString, 0);
+      AsmString += CodeGenInstruction::FlattenAsmStringVariants(II->AsmString, 0);
       unsigned i = 0;
       while (i < AsmString.length() && AsmString.at(i) != '\t') {
         opcode += AsmString.at(i);
@@ -122,8 +123,9 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
   }
 
   Record *Inst = II->TheDef;
+  StringRef instruction_name = Inst->getName();
 
-  if (Inst-> isSubClassOf("IForm"))  { // TODO: e.g. Ixmc instructions
+  if (Inst-> isSubClassOf("IForm"))  {
 
 
     BitsInit* As = (Inst->getValueAsBitsInit("As"));
@@ -290,17 +292,40 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
         }
         break;
       case 3:
-        gen_instr.push_back("nothing yet");
-        break;
+
+        switch (getValueFromBitsInit(Ad)) {
+          case 0:
+            if (instruction_name.back() == 'i') { // INS#ri, don't use constant generator
+              gen_instr.push_back(opcode + " #0x0045, r5");
+            }
+            else { // INS#rp
+              gen_instr.push_back(opcode + " @r4+, r5");
+            }
+            break;
+          case 1:
+          if (instruction_name.back() == 'i') { // INS#mi, don't use constant generator
+            gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " #0x0045, 2(r5)");
+            gen_instr.push_back(opcode + " #0x0045, 0x0206");
+            gen_instr.push_back(opcode + " #0x0045, &0x0206");
+          }
+          else { // INS#rp
+            gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " @r4+, 2(r5)");
+            gen_instr.push_back(opcode + " @r4+, 0x0206");
+            gen_instr.push_back(opcode + " @r4+, &0x0206");
+          }
+
+          break;
+        }
+      break;
     }
 
   }
 
-  else if (   Inst->isSubClassOf("IIForm")
+  else if (Inst->isSubClassOf("IIForm")
              || Inst->isSubClassOf("II16c")
              || Inst->isSubClassOf("II8c") ) {
-    auto OpCode = getValueFromBitsInit(Inst->getValueAsBitsInit("Opcode"));
-    if (OpCode == 6)  { // RETI
+    auto OpCodeValue = getValueFromBitsInit(Inst->getValueAsBitsInit("Opcode"));
+    if (OpCodeValue == 6)  { // RETI
       gen_instr.push_back(AsmString);
     } else {
       uint16_t As = 0; // II16c and II8c : constant generators used, register mode
@@ -311,7 +336,6 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
         case 0:
           gen_instr.push_back(opcode + " r4");
           break;
-          // 16 december: tot hier geraakt
         case 1:
         gen_instr.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4)");
         gen_instr.push_back(opcode + " 0x0202");
@@ -321,17 +345,11 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4");
           break;
         case 3:
-          // Opcodes: PUSH=4, CALL=5
-          switch (OpCode) {
-            case 4:
-              gen_instr.push_back("nothing yet");
-              break;
-            case 5:
-              gen_instr.push_back("nothing yet");
-              break;
-            default:
-              gen_instr.push_back("nothing yet");
-              break; // RRA, RRC, SWPB, SXT
+          if (instruction_name.back() == 'i') { // INS#i, use constant generator or not
+            gen_instr.push_back(opcode + " #0x00045");
+          }
+          else { // INS#p
+            gen_instr.push_back(opcode + " @r4+");
           }
           break;
         default:
@@ -340,8 +358,41 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
     }
   }
 
+  else if (Inst->isSubClassOf("CJForm")) {
+    gen_instr.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4)");
+    gen_instr.push_back(opcode + " 0x0202");
+    gen_instr.push_back(opcode + " &0x0202");
+  }
+
+  // Constant generators
+  else if (Inst -> isSubClassOf("I8rc") || Inst->isSubClassOf("I8mc") || Inst->isSubClassOf("I16rc") || Inst-> isSubClassOf("I16mc")) {
+    BitsInit* Ad = Inst->getValueAsBitsInit("Ad");
+    switch (getValueFromBitsInit(Ad)) {
+      case 0:
+        //INS#rc
+        gen_instr.push_back(opcode + " #0x0008, r5");
+        break;
+
+      case 1:
+        //INS#mc
+        gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " #0x0008, 2(r5)");
+        gen_instr.push_back(opcode + " #0x0008, 0x0206");
+        gen_instr.push_back(opcode + " #0x0008, &0x0206");
+        break;
+
+    }
+  }
+
+  else if (Inst-> isSubClassOf("II8c") || Inst->isSubClassOf("II16c")) {
+      //INS#c
+      gen_instr.push_back(opcode + " #0x0008");
+
+  }
+  else if (Inst->isSubClassOf("Pseudo")) {
+    gen_instr.push_back("Pseudo");
+  }
   else {
-    gen_instr.push_back("nothing yet")
+    gen_instr.push_back("nothing yet");
   }
 
   return gen_instr;
