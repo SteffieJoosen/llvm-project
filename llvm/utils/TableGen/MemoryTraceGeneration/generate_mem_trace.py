@@ -204,6 +204,8 @@ def generate_instruction(all_instr):
 
 
 
+
+
 # create directory file to dump the class files in
 # ------------------------------------------------
 if os.path.isdir("/home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTraceGeneration/Classes"):
@@ -217,19 +219,26 @@ with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTr
     all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
 
 print("len(all_instructions) = " + str(len(all_instructions)))
-no_instructions_testing = int(len(all_instructions) - 845)
+instr_number = input("Number in .inc file: ")
+range_start = 0
+i = 0
+while not "/* " + instr_number + "*/" in all_instructions[i]:
+    range_start += 1
+    i += 1
+no_instructions_testing = int(input("Number of instructions to generate: "))
 print("The instructions that are about to be simulated")
-for i in range(200,no_instructions_testing):
+for i in range(range_start,range_start + no_instructions_testing):
     if all_instructions[i] != "":
         print(all_instructions[i])
 
 found_classes = list()
 result_class = ""
 
-for i in range(200,no_instructions_testing):
+for i in range(range_start,range_start + no_instructions_testing):
     all_instr = ""
     if all_instructions[i] != "":
         all_instr = all_instructions[i].split('{')[1].split('}')[0].split(";")
+        addressing_modes = all_instructions[i][-2:]
         print("Instruction simulated: " + str(all_instr))
         res = generate_instruction(all_instr)
         assembly_string = res[0]
@@ -237,12 +246,14 @@ for i in range(200,no_instructions_testing):
         if result_class!= "" :
             file_name = "Classes/" + result_class + ".txt"
             if result_class in found_classes:
-                class_file = open(file_name, "a")
+                class_file = open(file_name, "a+")
             else:
                 class_file = open(file_name, "w+")
+                found_classes.append(result_class)
 
-            class_file.write(assembly_string + "\n")
+
+            class_file.write(assembly_string + " || "+ addressing_modes +  "\r\n")
             class_file.close()
     os.system('echo \"--------------------------------------\"')
-    os.system('echo \"------- | '+ str(int((i-0+1)/(no_instructions_testing-0) *100)) +'% | -------\"')
+    os.system('echo \"------- | '+ str(int((i-range_start+1)/(no_instructions_testing) *100)) +'% | -------\"')
     os.system('echo \"--------------------------------------\"\n')

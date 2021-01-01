@@ -175,7 +175,8 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
             // Symbolic mode
             // R4 used
-            gen_instr.push_back(opcode + " r4, 0x0206");
+            // This instruction gave rise to an unexpected clock cycle extra
+            //gen_instr.push_back(opcode + " r4, 0x0206");
             /*for (int i = 4; i < 16; i++){
                 string instr = source_reg_instructions[i] +"0x0206";
                 gen_instr.push_back(instr);
@@ -200,8 +201,8 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             //INS#rm
             // TODO: wat is B?
             gen_instr.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4), r5");
-            gen_instr.push_back(opcode + " 0x0202, r4");
-            gen_instr.push_back(opcode + " &0x0202, r4");
+            gen_instr.push_back(opcode + " 0x0202, r5");
+            gen_instr.push_back(opcode + " &0x0202, r5");
             /*for (int i = 0; i < 14; i++){ // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
               for (int j = 0; j < 16; j++) {
                 string instr = source_mem_instructions[i] +"r" + to_string(j);
@@ -222,7 +223,8 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             // Indexed dest mode
             for (int i = 0; i < 3; i++) {
               gen_instr.push_back("mov #0x0206, r5;nop;"+ v[i] + "2(r5)");
-              gen_instr.push_back(v[i] + "0x0206");
+              // This instruction gave rise to an unexpected clock cycle extra
+              //gen_instr.push_back(v[i] + "0x0206");
               gen_instr.push_back(v[i] + "&0x0206");
             }
 
@@ -261,7 +263,8 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 1:
             //INS#mn
             gen_instr.push_back("mov #0x0206, r5;nop;mov #0x0202, r4;nop;" + opcode + " @r4, 2(r5)");
-            gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4, 0x0206");
+            // This instruction gave rise to an unexpected extra clock cycle
+            //gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4, 0x0206");
             gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4, &0x0206");
 
 
@@ -305,12 +308,14 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 1:
           if (instruction_name.back() == 'i') { // INS#mi, don't use constant generator
             gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " #0x0045, 2(r5)");
-            gen_instr.push_back(opcode + " #0x0045, 0x0206");
+            // This instruction gave rise to an unexpected extra clock cycle
+            //gen_instr.push_back(opcode + " #0x0045, 0x0206");
             gen_instr.push_back(opcode + " #0x0045, &0x0206");
           }
-          else { // INS#rp
+          else { // INS#mp
             gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " @r4+, 2(r5)");
-            gen_instr.push_back(opcode + " @r4+, 0x0206");
+            // This instruction gave rise to an unexpected extra clock cycle
+            //gen_instr.push_back(opcode + " @r4+, 0x0206");
             gen_instr.push_back(opcode + " @r4+, &0x0206");
           }
 
@@ -376,7 +381,8 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
       case 1:
         //INS#mc
         gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " #0x0008, 2(r5)");
-        gen_instr.push_back(opcode + " #0x0008, 0x0206");
+        // This instruction gave rise to an unexpected extra clock cycle
+        //gen_instr.push_back(opcode + " #0x0008, 0x0206");
         gen_instr.push_back(opcode + " #0x0008, &0x0206");
         break;
 
@@ -389,7 +395,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
   }
   else if (Inst->isSubClassOf("Pseudo")) {
-    gen_instr.push_back("Pseudo");
+    gen_instr.push_back("nothing yet");
   }
   else {
     gen_instr.push_back("nothing yet");
