@@ -302,7 +302,12 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
               gen_instr.push_back(opcode + " #0x0045, r5");
             }
             else { // INS#rp
-              gen_instr.push_back(opcode + " @r4+, r5");
+              if (opcode == "ret"){
+                gen_instr.push_back(opcode);
+              }  else {
+                gen_instr.push_back(opcode + " @r4+, r5");
+              }
+
             }
             break;
           case 1:
@@ -331,7 +336,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
              || Inst->isSubClassOf("II8c") ) {
     auto OpCodeValue = getValueFromBitsInit(Inst->getValueAsBitsInit("Opcode"));
     if (OpCodeValue == 6)  { // RETI
-      gen_instr.push_back(AsmString);
+      gen_instr.push_back(opcode);
     } else {
       uint16_t As = 0; // II16c and II8c : constant generators used, register mode
       if (Inst->isSubClassOf("IIForm")) {
