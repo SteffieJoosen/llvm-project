@@ -7,6 +7,15 @@ from mem_trace_classification import classify_instruction
 
 NO_CLOCK_TICKS_BEFORE_TARGET_INSTR = 38659
 LENGTH_CLOCK_EDGE = 25
+INDEX_TIME = 0
+INDEX_CLK = 1
+INDEX_INST = 2
+INDEX_eu_pmem_en = 3
+INDEX_fe_pmem_en = 4
+INDEX_fe_pmem_en_dly = 5
+INDEX_eu_dmem_en = 6
+INDEX_eu_dmem_en_ok = 7
+INDEX_per_en = 8
 
 def file_len(fname):
     with open(fname) as f:
@@ -36,10 +45,10 @@ def remove_glitches(list_of_lines):
     previous_line = ""
     previous_was_bad_line = False
     for line in list_of_lines:
-        if not (int(split(line)[0])%LENGTH_CLOCK_EDGE == 0):
+        if not (int(split(line)[INDEX_TIME])%LENGTH_CLOCK_EDGE == 0):
             previous_data = split(previous_line)
             current_data = split(line)
-            previous_line = previous_data[0] + ' ' * 2 + previous_data[1] + ' ' * 35 + previous_data[2] +' ' + current_data[3] + ' ' + current_data[4] + ' ' + current_data[5] + ' ' + current_data[6] + ' ' + current_data[7]
+            previous_line = previous_data[INDEX_TIME] + ' ' * 2 + previous_data[INDEX_CLK] + ' ' * 35 + previous_data[INDEX_INST] + ' ' + current_data[INDEX_eu_pmem_en] + ' ' + current_data[INDEX_fe_pmem_en] + ' ' + current_data[INDEX_fe_pmem_en_dly] + ' ' + current_data[INDEX_eu_dmem_en] + ' ' + current_data[INDEX_eu_dmem_en_ok] + ' ' + current_data[INDEX_per_en]
             new_list_of_lines.append(previous_line)
             previous_was_bad_line = True
         else:
@@ -59,7 +68,7 @@ def find_instruction_lines_vcd(new_lines, start_instruction, no_instr_to_analyse
     start_last_instr = 0
     for i in range(len(new_lines)):
         if not new_lines[i] == "":
-            current_instruction = split(new_lines[i])[2]
+            current_instruction = split(new_lines[i])[INDEX_INST]
             if i - lines_skipped == start_instruction:
                 no_instr_found = 1
                 instr_to_analyse = current_instruction
@@ -152,9 +161,11 @@ def generate_instruction(all_instr):
 
     # run the vcdvis script to generate the tex file containing the traces
     os.system('cp /home/steffie/sancus-main/sancus-examples/mem_trace/mem_trace.vcd /home/steffie/vcdvcd/mem_trace.vcd')
+    os.system('cp /home/steffie/sancus-main/sancus-examples/mem_trace/mem_trace.vcd /home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTraceGeneration/mem_trace.vcd')
     os.system('cd ~/vcdvcd && '
-              './vcdcat -x mem_trace.vcd TOP.tb_openMSP430.mclk TOP.tb_openMSP430.inst_full TOP.tb_openMSP430.dut.mem_backbone_0.eu_pmem_en TOP.tb_openMSP430.dut.mem_backbone_0.eu_dmem_en TOP.tb_openMSP430.dut.mem_backbone_0.fe_pmem_en'
+              './vcdcat -x mem_trace.vcd TOP.tb_openMSP430.mclk TOP.tb_openMSP430.inst_full TOP.tb_openMSP430.dut.mem_backbone_0.eu_pmem_en TOP.tb_openMSP430.dut.mem_backbone_0.fe_pmem_en TOP.tb_openMSP430.dut.mem_backbone_0.eu_dmem_en TOP.tb_openMSP430.dut.mem_backbone_0.per_en'
               ' > ' + sys.path[0] + '/Trace.txt')
+              # output sigals in orde: program memory, data memory, peripheral memory
 
     length = file_len("Trace.txt")
 
@@ -180,11 +191,14 @@ def generate_instruction(all_instr):
     program_mem = []
     for i in range(start_last_instr, len(instr_lines)):
         data = split(instr_lines[i])
-        mclk.append(data[1])
-        instr_full.append(data[2])
-        peripheral_mem.append(data[3])
-        data_mem.append(data[4])
-        program_mem.append(data[6])
+        mclk.append(data[INDEX_CLK])
+        instr_full.append(data[INDEX_INST])
+        if (bool(data[INDEX_eu_dmem_en] == '1') | bool(data[INDEX_fe_pmem_en] == '1')) == True:
+            program_mem.append('1')
+        else:
+            program_mem.append('0')
+        data_mem.append(data[INDEX_eu_dmem_en])
+        peripheral_mem.append(data[INDEX_per_en])
 
 
     # clean up
@@ -222,7 +236,7 @@ print("len(all_instructions) = " + str(len(all_instructions)))
 instr_number = input("Number in .inc file: ")
 range_start = 0
 i = 0
-while not "/* " + instr_number + "*/" in all_instructions[i]:
+while i < len(all_instructions) and not "/* " + instr_number + "*/" in all_instructions[i]:
     range_start += 1
     i += 1
 no_instructions_testing = int(input("Number of instructions to generate: "))
