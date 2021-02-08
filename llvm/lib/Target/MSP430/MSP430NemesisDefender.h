@@ -189,7 +189,7 @@ private:
 
   void RegisterDefs(MBBInfo &BBI);
 
-  void CompensateInstr(const MachineInstr &MI, MachineBasicBlock &MBB,
+  virtual void CompensateInstr(const MachineInstr &MI, MachineBasicBlock &MBB,
                        MachineBasicBlock::iterator MBBI);
   void CompensateCall(const MachineInstr &Call, MachineBasicBlock &MBB,
                       MachineBasicBlock::iterator MBBI);
