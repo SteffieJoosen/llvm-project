@@ -81,7 +81,7 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
       break;
     case 'n':
       for (int j = 4; j < 16; j++){
-        string instr = "mov #0x0202, r" + to_string(j) + ";nop;";
+        string instr = "mov #0x0402, r" + to_string(j) + ";nop;";
         instr += opcode +" @r" + to_string(j) + ", ";
         source_operands.push_back(instr);
       }
@@ -89,17 +89,19 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
     case 'm':
       // Indexed
       for (int j = 4; j < 16; j++){
-        string instr = "mov #0x0202, r" + to_string(j) + ";nop;";
+        string instr = "mov #0x0402, r" + to_string(j) + ";nop;";
         instr += opcode +" 2(r" + to_string(j) + "), ";
         source_operands.push_back(instr);
       }
 
       // Symbolic
-      string inst = opcode + " 0x0202, ";
+
+      string inst = opcode + " 0x0402, ";
       source_operands.push_back(inst);
 
       // Absolute
-      inst = opcode + " &0x0202, ";
+      inst = "mov #0x0402, 0x0402;nop;";
+      inst = opcode + " &0x0402, ";
       source_operands.push_back(inst);
 
 
@@ -161,13 +163,13 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             //INS#mr
             //R4 and R5 used
             // Indexed
-            string instr = "mov #0x0206, r5;nop;";
+            string instr = "mov #0x0406, r5;nop;";
             gen_instr.push_back(instr + opcode + " r4, 2(r5)");
             // Indexed mode, use R4 to R15
             /*for (int i = 0; i < 16; i++){
               for (int j = 4; j < 16; j++){
 
-                string instr = "mov #0x0206, r" + to_string(j) + ";";
+                string instr = "mov #0x0406, r" + to_string(j) + ";";
                 instr += source_reg_instructions[i] +"2(r" + to_string(j) + ")";
                 gen_instr.push_back(instr);
               }
@@ -176,18 +178,18 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             // Symbolic mode
             // R4 used
             // This instruction gave rise to an unexpected clock cycle extra
-            //gen_instr.push_back(opcode + " r4, 0x0206");
+            //gen_instr.push_back(opcode + " r4, 0x0406");
             /*for (int i = 4; i < 16; i++){
-                string instr = source_reg_instructions[i] +"0x0206";
+                string instr = source_reg_instructions[i] +"0x0406";
                 gen_instr.push_back(instr);
 
             }*/
 
             // Absolute mode
             // R4 used
-            gen_instr.push_back(opcode + " r4, &0x0206");
+            gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " r4, &0x0406");
             /*for (int i = 4; i < 16; i++){
-                string instr = source_reg_instructions[i] +"&0x0206";
+                string instr = source_reg_instructions[i] +"&0x0406";
                 gen_instr.push_back(instr);
 
             }*/
@@ -200,9 +202,9 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 0:
             //INS#rm
             // TODO: wat is B?
-            gen_instr.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4), r5");
-            gen_instr.push_back(opcode + " 0x0202, r5");
-            gen_instr.push_back(opcode + " &0x0202, r5");
+            gen_instr.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4), r5");
+            gen_instr.push_back(opcode + " 0x0402, r5");
+            gen_instr.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402, r5");
             /*for (int i = 0; i < 14; i++){ // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
               for (int j = 0; j < 16; j++) {
                 string instr = source_mem_instructions[i] +"r" + to_string(j);
@@ -214,18 +216,18 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             //INS#mm
             std::vector<string> v;
             // Indexed source mode
-            v.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4), ");
+            v.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4), ");
             // Symbolic source mode
-            v.push_back(opcode + " 0x0202, ");
+            v.push_back(opcode + " 0x0402, ");
             // Absolute mode
-            v.push_back(opcode + " &0x0202, ");
+            v.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402, ");
 
             // Indexed dest mode
             for (int i = 0; i < 3; i++) {
-              gen_instr.push_back("mov #0x0206, r5;nop;"+ v[i] + "2(r5)");
+              gen_instr.push_back("mov #0x0406, r5;nop;"+ v[i] + "2(r5)");
               // This instruction gave rise to an unexpected clock cycle extra
-              //gen_instr.push_back(v[i] + "0x0206");
-              gen_instr.push_back(v[i] + "&0x0206");
+              //gen_instr.push_back(v[i] + "0x0406");
+              gen_instr.push_back("mov #0x0406, 0x0406;nop;"+ v[i] + "&0x0406");
             }
 
             // Indexed mode, use R4 to R15: on index i, register i+4 is used for indexed mode
@@ -233,13 +235,13 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
               for (int j = 4; j < 16; j++){
                 if (i <12) {
                   if (i != j-4) {
-                    string instr = "mov #0x0206, r" + to_string(j) + ";";
+                    string instr = "mov #0x0406, r" + to_string(j) + ";";
                     instr += source_mem_instructions[i] + "2(r" + to_string(j) + ")";
                     gen_instr.push_back(instr);
                   }
 
                 } else {
-                  string instr = "mov #0x0206, r" + to_string(j) + ";";
+                  string instr = "mov #0x0406, r" + to_string(j) + ";";
                   instr += source_mem_instructions[i] + "2(r" + to_string(j) + ")";
                   gen_instr.push_back(instr);
                 }
@@ -251,7 +253,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
       case 2:
         switch (getValueFromBitsInit(Ad)) {
           case 0:
-            gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4, r5");
+            gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4, r5");
           //INS#rn
           /*for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indirect mode
             for (int j = 0; j < 16; j++) {
@@ -262,17 +264,17 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           break;
           case 1:
             //INS#mn
-            gen_instr.push_back("mov #0x0206, r5;nop;mov #0x0202, r4;nop;" + opcode + " @r4, 2(r5)");
+            gen_instr.push_back("mov #0x0406, r5;nop;mov #0x0402, r4;nop;" + opcode + " @r4, 2(r5)");
             // This instruction gave rise to an unexpected extra clock cycle
-            //gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4, 0x0206");
-            gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4, &0x0206");
+            //gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4, 0x0406");
+            gen_instr.push_back("mov #0x0402, r4;nop;mov #0x0406, 0x0406;nop;" + opcode + " @r4, &0x0406");
 
 
             // Indexed mode, use R4 to R15
             /*for (int i = 0; i < 12; i++){
               for (int j = 4; j < 16; j++){
                 if (i != j-4){
-                  string instr = "mov #0x0206, r" + to_string(j) + ";";
+                  string instr = "mov #0x0406, r" + to_string(j) + ";";
                   instr += source_ind_instructions[i] +"2(r" + to_string(j) + ")";
                   gen_instr.push_back(instr);
                 }
@@ -280,13 +282,13 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             }
             // Symbolic mode
             for (int i = 0; i < 12; i++){
-              string instr = source_ind_instructions[i] +"0x0206";
+              string instr = source_ind_instructions[i] +"0x0406";
               gen_instr.push_back(instr);
             }
 
           // Absolute mode
           for (int i = 0; i < 12; i++){
-              string instr = source_reg_instructions[i] +"&0x0206";
+              string instr = source_reg_instructions[i] +"&0x0406";
               gen_instr.push_back(instr);
 
           }*/
@@ -312,16 +314,16 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             break;
           case 1:
           if (instruction_name.back() == 'i') { // INS#mi, don't use constant generator
-            gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " #0x0045, 2(r5)");
+            gen_instr.push_back("mov #0x0406, r5;nop;" + opcode + " #0x0045, 2(r5)");
             // This instruction gave rise to an unexpected extra clock cycle
-            //gen_instr.push_back(opcode + " #0x0045, 0x0206");
-            gen_instr.push_back(opcode + " #0x0045, &0x0206");
+            //gen_instr.push_back(opcode + " #0x0045, 0x0406");
+            gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, &0x0406");
           }
           else { // INS#mp
-            gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " @r4+, 2(r5)");
+            gen_instr.push_back("mov #0x0406, r5;nop;" + opcode + " @r4+, 2(r5)");
             // This instruction gave rise to an unexpected extra clock cycle
-            //gen_instr.push_back(opcode + " @r4+, 0x0206");
-            gen_instr.push_back(opcode + " @r4+, &0x0206");
+            //gen_instr.push_back(opcode + " @r4+, 0x0406");
+            gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " @r4+, &0x0406");
           }
 
           break;
@@ -347,12 +349,12 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           gen_instr.push_back(opcode + " r4");
           break;
         case 1:
-        gen_instr.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4)");
-        gen_instr.push_back(opcode + " 0x0202");
-        gen_instr.push_back(opcode + " &0x0202");
+        gen_instr.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4)");
+        gen_instr.push_back(opcode + " 0x0402");
+        gen_instr.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402");
           break;
         case 2:
-          gen_instr.push_back("mov #0x0202, r4;nop;" + opcode + " @r4");
+          gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4");
           break;
         case 3:
           if (instruction_name.back() == 'i') { // INS#i, use constant generator or not
@@ -369,9 +371,9 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
   }
 
   else if (Inst->isSubClassOf("CJForm")) {
-    gen_instr.push_back("mov #0x0202, r4;nop;" + opcode +  " 2(r4)");
-    gen_instr.push_back(opcode + " 0x0202");
-    gen_instr.push_back(opcode + " &0x0202");
+    gen_instr.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4)");
+    gen_instr.push_back(opcode + " 0x0402");
+    gen_instr.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402");
   }
 
   // Constant generators
@@ -385,10 +387,10 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
       case 1:
         //INS#mc
-        gen_instr.push_back("mov #0x0206, r5;nop;" + opcode + " #0x0008, 2(r5)");
+        gen_instr.push_back("mov #0x0406, r5;nop;" + opcode + " #0x0008, 2(r5)");
         // This instruction gave rise to an unexpected extra clock cycle
-        //gen_instr.push_back(opcode + " #0x0008, 0x0206");
-        gen_instr.push_back(opcode + " #0x0008, &0x0206");
+        //gen_instr.push_back(opcode + " #0x0008, 0x0406");
+        gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " #0x0008, &0x0406");
         break;
 
     }

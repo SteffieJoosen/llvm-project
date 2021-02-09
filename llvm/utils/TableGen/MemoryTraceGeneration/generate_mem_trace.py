@@ -193,7 +193,7 @@ def generate_instruction(all_instr):
         data = split(instr_lines[i])
         mclk.append(data[INDEX_CLK])
         instr_full.append(data[INDEX_INST])
-        if (bool(data[INDEX_eu_dmem_en] == '1') | bool(data[INDEX_fe_pmem_en] == '1')) == True:
+        if (bool(data[INDEX_eu_pmem_en] == '1') | bool(data[INDEX_fe_pmem_en] == '1')) == True:
             program_mem.append('1')
         else:
             program_mem.append('0')
