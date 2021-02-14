@@ -30,12 +30,12 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <fstream>
 #include <boost/algorithm/string.hpp>
 
-#define DEBUG_TYPE "skeleton-emitter"
+
 
 using namespace llvm;
-using namespace std;
 
 namespace {
 
@@ -69,34 +69,34 @@ static inline uint64_t getValueFromBitsInit(const BitsInit *B) {
   return Value;
 }
 
-static vector<string> generate_source_operand_instructions(char addressing_mode, string opcode) {
+static std::vector<std::string> generate_source_operand_instructions(char addressing_mode, std::string opcode) {
 
-  vector<string> source_operands;
+  std::vector<std::string> source_operands;
   switch (addressing_mode) {
     case 'r':
       for (int i = 0; i < 16; i++){
-          string instr = opcode + " r" + to_string(i) + ", ";
+          std::string instr = opcode + " r" + std::to_string(i) + ", ";
           source_operands.push_back(instr);
       }
       break;
     case 'n':
       for (int j = 4; j < 16; j++){
-        string instr = "mov #0x0402, r" + to_string(j) + ";nop;";
-        instr += opcode +" @r" + to_string(j) + ", ";
+        std::string instr = "mov #0x0402, r" + std::to_string(j) + ";nop;";
+        instr += opcode +" @r" + std::to_string(j) + ", ";
         source_operands.push_back(instr);
       }
       break;
     case 'm':
       // Indexed
       for (int j = 4; j < 16; j++){
-        string instr = "mov #0x0402, r" + to_string(j) + ";nop;";
-        instr += opcode +" 2(r" + to_string(j) + "), ";
+        std::string instr = "mov #0x0402, r" + std::to_string(j) + ";nop;";
+        instr += opcode +" 2(r" + std::to_string(j) + "), ";
         source_operands.push_back(instr);
       }
 
       // Symbolic
 
-      string inst = opcode + " 0x0402, ";
+      std::string inst = opcode + " 0x0402, ";
       source_operands.push_back(inst);
 
       // Absolute
@@ -109,12 +109,17 @@ static vector<string> generate_source_operand_instructions(char addressing_mode,
   return source_operands;
 }
 
-static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostream &OS) {
+static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(const CodeGenInstruction *II, raw_ostream &OS) {
 
 
-  vector<string> gen_instr;
-  string opcode = "";
-  string AsmString = "";
+  std::vector<std::pair<std::string,std::string>> gen_instr_class_pairs;
+  std::string instr_class;
+  std::string instr_to_simulate;
+
+  std::ifstream fs;
+
+  std::string opcode = "";
+  std::string AsmString = "";
   if (!II->AsmString.empty()) {
       AsmString += CodeGenInstruction::FlattenAsmStringVariants(II->AsmString, 0);
       unsigned i = 0;
@@ -135,10 +140,11 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
     // For instructions that use register, these vectors are for generating the instructions
     // using all combinations of them
-    vector<string> source_reg_instructions = generate_source_operand_instructions('r', opcode);
-    vector<string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
-    vector<string> source_ind_instructions = generate_source_operand_instructions('n', opcode);
+    std::vector<std::string> source_reg_instructions = generate_source_operand_instructions('r', opcode);
+    std::vector<std::string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
+    std::vector<std::string> source_ind_instructions = generate_source_operand_instructions('n', opcode);
 
+    char my_chars[] = {'S','t','e', '\0'};
 
 
     switch (getValueFromBitsInit(As)) {
@@ -149,28 +155,21 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 0:
             //INS#rr
             //R4 and R5 used
-            gen_instr.push_back(opcode + " r4, r5");
-            // Special & General purpose registers together
-            /*for (int i = 0; i < 16; i++){
-              for (int j = 0; j < 16; j++){
-                string instr = source_reg_instructions[i] +"r" + to_string(j);
-                gen_instr.push_back(instr);
-              }
-            }*/
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4, r5","1 | 0 | 0 | 1"));
             break;
 
           case 1:
             //INS#mr
             //R4 and R5 used
             // Indexed
-            string instr = "mov #0x0406, r5;nop;";
-            gen_instr.push_back(instr + opcode + " r4, 2(r5)");
+            std::string instr = "mov #0x0406, r5;nop;";
+            gen_instr_class_pairs.push_back(std::make_pair(instr + opcode + " r4, 2(r5)","class"));
             // Indexed mode, use R4 to R15
             /*for (int i = 0; i < 16; i++){
               for (int j = 4; j < 16; j++){
 
-                string instr = "mov #0x0406, r" + to_string(j) + ";";
-                instr += source_reg_instructions[i] +"2(r" + to_string(j) + ")";
+                std::string instr = "mov #0x0406, r" + std::to_string(j) + ";";
+                instr += source_reg_instructions[i] +"2(r" + std::to_string(j) + ")";
                 gen_instr.push_back(instr);
               }
             }*/
@@ -180,16 +179,16 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
             // This instruction gave rise to an unexpected clock cycle extra
             //gen_instr.push_back(opcode + " r4, 0x0406");
             /*for (int i = 4; i < 16; i++){
-                string instr = source_reg_instructions[i] +"0x0406";
+                std::string instr = source_reg_instructions[i] +"0x0406";
                 gen_instr.push_back(instr);
 
             }*/
 
             // Absolute mode
             // R4 used
-            gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " r4, &0x0406");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " r4, &0x0406","class"));
             /*for (int i = 4; i < 16; i++){
-                string instr = source_reg_instructions[i] +"&0x0406";
+                std::string instr = source_reg_instructions[i] +"&0x0406";
                 gen_instr.push_back(instr);
 
             }*/
@@ -202,19 +201,19 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
           case 0:
             //INS#rm
             // TODO: wat is B?
-            gen_instr.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4), r5");
-            gen_instr.push_back(opcode + " 0x0402, r5");
-            gen_instr.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402, r5");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode +  " 2(r4), r5", "class"));
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0x0402, r5","class"));
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402, r5","class"));
             /*for (int i = 0; i < 14; i++){ // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
               for (int j = 0; j < 16; j++) {
-                string instr = source_mem_instructions[i] +"r" + to_string(j);
+                std::string instr = source_mem_instructions[i] +"r" + std::to_string(j);
                 gen_instr.push_back(instr);
               }
             }*/
             break;
           case 1:
             //INS#mm
-            std::vector<string> v;
+            std::vector<std::string> v;
             // Indexed source mode
             v.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4), ");
             // Symbolic source mode
@@ -224,10 +223,10 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
             // Indexed dest mode
             for (int i = 0; i < 3; i++) {
-              gen_instr.push_back("mov #0x0406, r5;nop;"+ v[i] + "2(r5)");
+              gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;"+ v[i] + "2(r5)","cl"));
               // This instruction gave rise to an unexpected clock cycle extra
               //gen_instr.push_back(v[i] + "0x0406");
-              gen_instr.push_back("mov #0x0406, 0x0406;nop;"+ v[i] + "&0x0406");
+              gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;"+ v[i] + "&0x0406","cl"));
             }
 
             // Indexed mode, use R4 to R15: on index i, register i+4 is used for indexed mode
@@ -235,14 +234,14 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
               for (int j = 4; j < 16; j++){
                 if (i <12) {
                   if (i != j-4) {
-                    string instr = "mov #0x0406, r" + to_string(j) + ";";
-                    instr += source_mem_instructions[i] + "2(r" + to_string(j) + ")";
+                    std::string instr = "mov #0x0406, r" + std::to_string(j) + ";";
+                    instr += source_mem_instructions[i] + "2(r" + std::to_string(j) + ")";
                     gen_instr.push_back(instr);
                   }
 
                 } else {
-                  string instr = "mov #0x0406, r" + to_string(j) + ";";
-                  instr += source_mem_instructions[i] + "2(r" + to_string(j) + ")";
+                  std::string instr = "mov #0x0406, r" + std::to_string(j) + ";";
+                  instr += source_mem_instructions[i] + "2(r" + std::to_string(j) + ")";
                   gen_instr.push_back(instr);
                 }
               }
@@ -253,42 +252,42 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
       case 2:
         switch (getValueFromBitsInit(Ad)) {
           case 0:
-            gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4, r5");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4, r5","cl"));
           //INS#rn
           /*for (int i = 0; i < 12; i++){ // Only twelve general purpose registers for indirect mode
             for (int j = 0; j < 16; j++) {
-              string instr = source_ind_instructions[i] +"r" + to_string(j);
+              std::string instr = source_ind_instructions[i] +"r" + std::to_string(j);
               gen_instr.push_back(instr);
             }
           }*/
           break;
           case 1:
             //INS#mn
-            gen_instr.push_back("mov #0x0406, r5;nop;mov #0x0402, r4;nop;" + opcode + " @r4, 2(r5)");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;mov #0x0402, r4;nop;" + opcode + " @r4, 2(r5)","cl"));
             // This instruction gave rise to an unexpected extra clock cycle
             //gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4, 0x0406");
-            gen_instr.push_back("mov #0x0402, r4;nop;mov #0x0406, 0x0406;nop;" + opcode + " @r4, &0x0406");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;mov #0x0406, 0x0406;nop;" + opcode + " @r4, &0x0406","cl"));
 
 
             // Indexed mode, use R4 to R15
             /*for (int i = 0; i < 12; i++){
               for (int j = 4; j < 16; j++){
                 if (i != j-4){
-                  string instr = "mov #0x0406, r" + to_string(j) + ";";
-                  instr += source_ind_instructions[i] +"2(r" + to_string(j) + ")";
+                  std::string instr = "mov #0x0406, r" + std::to_string(j) + ";";
+                  instr += source_ind_instructions[i] +"2(r" + std::to_string(j) + ")";
                   gen_instr.push_back(instr);
                 }
               }
             }
             // Symbolic mode
             for (int i = 0; i < 12; i++){
-              string instr = source_ind_instructions[i] +"0x0406";
+              std::string instr = source_ind_instructions[i] +"0x0406";
               gen_instr.push_back(instr);
             }
 
           // Absolute mode
           for (int i = 0; i < 12; i++){
-              string instr = source_reg_instructions[i] +"&0x0406";
+              std::string instr = source_reg_instructions[i] +"&0x0406";
               gen_instr.push_back(instr);
 
           }*/
@@ -301,29 +300,29 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
         switch (getValueFromBitsInit(Ad)) {
           case 0:
             if (instruction_name.back() == 'i') { // INS#ri, don't use constant generator
-              gen_instr.push_back(opcode + " #0x0045, r5");
+              gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0045, r5","cl"));
             }
             else { // INS#rp
               if (opcode == "ret"){
-                gen_instr.push_back(opcode);
+                gen_instr_class_pairs.push_back(std::make_pair(opcode,"cl"));
               }  else {
-                gen_instr.push_back(opcode + " @r4+, r5");
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " @r4+, r5","cl"));
               }
 
             }
             break;
           case 1:
           if (instruction_name.back() == 'i') { // INS#mi, don't use constant generator
-            gen_instr.push_back("mov #0x0406, r5;nop;" + opcode + " #0x0045, 2(r5)");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0045, 2(r5)","cl"));
             // This instruction gave rise to an unexpected extra clock cycle
             //gen_instr.push_back(opcode + " #0x0045, 0x0406");
-            gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, &0x0406");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, &0x0406","cl"));
           }
           else { // INS#mp
-            gen_instr.push_back("mov #0x0406, r5;nop;" + opcode + " @r4+, 2(r5)");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " @r4+, 2(r5)","cl"));
             // This instruction gave rise to an unexpected extra clock cycle
             //gen_instr.push_back(opcode + " @r4+, 0x0406");
-            gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " @r4+, &0x0406");
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " @r4+, &0x0406","cl"));
           }
 
           break;
@@ -338,7 +337,7 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
              || Inst->isSubClassOf("II8c") ) {
     auto OpCodeValue = getValueFromBitsInit(Inst->getValueAsBitsInit("Opcode"));
     if (OpCodeValue == 6)  { // RETI
-      gen_instr.push_back(opcode);
+      gen_instr_class_pairs.push_back(std::make_pair(opcode,"cl"));
     } else {
       uint16_t As = 0; // II16c and II8c : constant generators used, register mode
       if (Inst->isSubClassOf("IIForm")) {
@@ -346,22 +345,22 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
       }
       switch (As) {
         case 0:
-          gen_instr.push_back(opcode + " r4");
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4","cl"));
           break;
         case 1:
-        gen_instr.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4)");
-        gen_instr.push_back(opcode + " 0x0402");
-        gen_instr.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402");
+        gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode +  " 2(r4)","cl"));
+        gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0x0402","cl"));
+        gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402","cl"));
           break;
         case 2:
-          gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4");
+          gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4","cl"));
           break;
         case 3:
           if (instruction_name.back() == 'i') { // INS#i, use constant generator or not
-            gen_instr.push_back(opcode + " #0x00045");
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x00045","cl"));
           }
           else { // INS#p
-            gen_instr.push_back(opcode + " @r4+");
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " @r4+","cl"));
           }
           break;
         default:
@@ -371,9 +370,9 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
   }
 
   else if (Inst->isSubClassOf("CJForm")) {
-    gen_instr.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4)");
-    gen_instr.push_back(opcode + " 0x0402");
-    gen_instr.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402");
+    gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode +  " 2(r4)","cl"));
+    gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0x0402","cl"));
+    gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402","cl"));
   }
 
   // Constant generators
@@ -382,15 +381,15 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
     switch (getValueFromBitsInit(Ad)) {
       case 0:
         //INS#rc
-        gen_instr.push_back(opcode + " #0x0008, r5");
+        gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0008, r5","cl"));
         break;
 
       case 1:
         //INS#mc
-        gen_instr.push_back("mov #0x0406, r5;nop;" + opcode + " #0x0008, 2(r5)");
+        gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0008, 2(r5)","cl"));
         // This instruction gave rise to an unexpected extra clock cycle
         //gen_instr.push_back(opcode + " #0x0008, 0x0406");
-        gen_instr.push_back("mov #0x0406, 0x0406;nop;" + opcode + " #0x0008, &0x0406");
+        gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0008, &0x0406","cl"));
         break;
 
     }
@@ -398,17 +397,17 @@ static vector<string> ComputeMemoryTrace(const CodeGenInstruction *II, raw_ostre
 
   else if (Inst-> isSubClassOf("II8c") || Inst->isSubClassOf("II16c")) {
       //INS#c
-      gen_instr.push_back(opcode + " #0x0008");
+      gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0008","cl"));
 
   }
   else if (Inst->isSubClassOf("Pseudo")) {
-    gen_instr.push_back("nothing yet");
+    gen_instr_class_pairs.push_back(std::make_pair("nothing yet","no class"));
   }
   else {
-    gen_instr.push_back("nothing yet");
+    gen_instr_class_pairs.push_back(std::make_pair("nothing yet","no class"));
   }
 
-  return gen_instr;
+  return gen_instr_class_pairs;
 }
 
 
@@ -429,11 +428,11 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   for (const CodeGenInstruction *II : Target.getInstructionsByEnumValue()) {
 
     Record *Inst = II->TheDef;
-    auto generated_instructions = ComputeMemoryTrace(II, OS);
+    auto generated_instructions = ComputeMemoryTraceClass(II, OS);
 
     for (unsigned i = 0; i < generated_instructions.size(); i++){
       OS << "/* " << Num << "*/ "
-          << "{" << generated_instructions[i] << "}, "
+          << "{\"" << generated_instructions[i].first << "\" , \"" << generated_instructions[i].second << "\"}, "
           << "// " << Namespace << "::" << Inst->getName() << "\n";
     }
     Num++;
