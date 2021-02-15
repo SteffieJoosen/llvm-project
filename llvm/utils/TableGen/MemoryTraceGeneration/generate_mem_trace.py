@@ -251,7 +251,7 @@ result_class = ""
 for i in range(range_start,range_start + no_instructions_testing):
     all_instr = ""
     if all_instructions[i] != "":
-        all_instr = all_instructions[i].split('{')[1].split('}')[0].split(";")
+        all_instr = all_instructions[i].split('{')[1].split('}')[0].split(" , ")[0][1:-1].split(";")
         addressing_modes = all_instructions[i][-2:]
         print("Instruction simulated: " + str(all_instr))
         res = generate_instruction(all_instr)
