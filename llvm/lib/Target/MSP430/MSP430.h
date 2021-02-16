@@ -16,6 +16,7 @@
 
 #include "MCTargetDesc/MSP430MCTargetDesc.h"
 #include "llvm/Target/TargetMachine.h"
+#include "MSP430NemesisDefender.h"
 
 namespace MSP430CC {
   // MSP430 specific condition code.
@@ -41,6 +42,7 @@ namespace llvm {
                                     CodeGenOpt::Level OptLevel);
 
   FunctionPass *createMSP430NemesisDefenderPass();
+  FunctionPass *createMSP430DMADefenderPass();
   FunctionPass *createMSP430RTLInternalizationPass();
   FunctionPass *createMSP430BranchSelectionPass();
 
