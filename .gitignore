@@ -48,6 +48,7 @@ autoconf/autom4te.cache
 /.idea
 /clang/.idea
 cmake-build-debug/
+llvm/utils/TableGen/MemoryTraceGeneration/Classes
 
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).

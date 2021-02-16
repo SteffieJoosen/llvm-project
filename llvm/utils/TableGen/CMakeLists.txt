@@ -35,6 +35,7 @@ add_tablegen(llvm-tblgen LLVM
   InstrDocsEmitter.cpp
   IntrinsicEmitter.cpp
   MSP430InstrLatencyInfo.cpp
+  MSP430InstrMemTraceInfo.cpp
   OptEmitter.cpp
   OptParserEmitter.cpp
   OptRSTEmitter.cpp

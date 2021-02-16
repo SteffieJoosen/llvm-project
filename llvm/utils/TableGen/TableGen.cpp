@@ -53,6 +53,7 @@ enum ActionType {
   GenRegisterBank,
   GenExegesis,
   GenMSP430InstrLatencyInfo,
+  GenMSP430InstrMemTraceInfo,
   GenAutomata,
   GenDirectivesEnumDecl,
   GenDirectivesEnumImpl,
@@ -133,6 +134,8 @@ cl::opt<ActionType> Action(
                    "Generate registers bank descriptions"),
         clEnumValN(GenMSP430InstrLatencyInfo, "gen-msp430-latency-info",
                    "Generate MSP430 instruction latency information"),
+        clEnumValN(GenMSP430InstrMemTraceInfo, "gen-msp430-memtrace-info",
+                    "Generate MSP430 Instruction Memory Trace Information"),
         clEnumValN(GenExegesis, "gen-exegesis",
                    "Generate llvm-exegesis tables"),
         clEnumValN(GenAutomata, "gen-automata", "Generate generic automata"),
@@ -265,6 +268,9 @@ bool LLVMTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
     break;
   case GenMSP430InstrLatencyInfo:
     EmitMSP430InstrLatencyInfo(Records, OS);
+    break;
+  case GenMSP430InstrMemTraceInfo:
+    EmitMSP430InstrMemTraceInfo(Records, OS);
     break;
   case GenExegesis:
     EmitExegesis(Records, OS);

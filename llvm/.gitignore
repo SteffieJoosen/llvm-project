@@ -34,7 +34,8 @@ autoconf/autom4te.cache
 /.idea
 # Qt Creator project configuration
 /CMakeLists.txt.user
-
+# Files created by the memory trace generation toolchain
+/utils/TableGen/MemoryTraceGeneration/Trace.txt
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).
 #==============================================================================#
