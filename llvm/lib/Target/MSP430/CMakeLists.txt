@@ -17,6 +17,7 @@ add_llvm_target(MSP430CodeGen
   MSP430BranchSelector.cpp
   MSP430RTLInternalizer.cpp
   MSP430NemesisDefender.cpp
+        MSP430DMADefender.cpp
   MSP430ISelDAGToDAG.cpp
   MSP430ISelLowering.cpp
   MSP430InstrInfo.cpp

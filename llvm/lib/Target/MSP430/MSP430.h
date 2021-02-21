@@ -41,6 +41,7 @@ namespace llvm {
                                     CodeGenOpt::Level OptLevel);
 
   FunctionPass *createMSP430NemesisDefenderPass();
+  FunctionPass *createMSP430DMADefenderPass();
   FunctionPass *createMSP430RTLInternalizationPass();
   FunctionPass *createMSP430BranchSelectionPass();
 
