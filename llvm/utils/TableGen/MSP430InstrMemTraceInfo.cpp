@@ -458,10 +458,13 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   CodeGenTarget &Target = CDP.getTargetInfo();
   StringRef Namespace = Target.getInstNamespace();
 
+  OS << "#ifdef GET_INSTRINFO_MEMTRACE_DESC\n";
+  OS << "#undef GET_INSTRINFO_MEMTRACE_DESC\n";
+
   OS << "namespace llvm {\n\n";
   OS << "namespace " << Namespace << " {\n";
 
-  OS << "static const string Generated_Instructions[][2] = {\n";
+  OS << "static const StringRef Instruction_classes[][2] = {\n";
 
 
   unsigned Num = 0;
@@ -472,7 +475,7 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
 
     for (unsigned i = 0; i < generated_instructions.size(); i++){
       OS << "/* " << Num << "*/ "
-          << "{\"" << generated_instructions[i].first << "\" , \"" << generated_instructions[i].second << "\"}, "
+          << "{\"" << generated_instructions[i].first << "\", \"" << generated_instructions[i].second << "\"}, "
           << "// " << Namespace << "::" << Inst->getName() << "\n";
     }
     Num++;
@@ -484,6 +487,7 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   OS << "};\n";
   OS << "} // end namespace " << Namespace << "\n";
   OS << "} // end namespace llvm\n";
+  OS << "#endif // GET_INSTRINFO_MEMTRACE_DESC\n";
 }
 
 namespace llvm {

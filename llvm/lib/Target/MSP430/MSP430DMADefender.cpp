@@ -16,6 +16,9 @@ MachineInstr *MSP430DMADefenderPass::build_dummy_1_0_0_1(MachineBasicBlock &MBB,
 void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI, MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) {
 
     auto instruction_class = getTII()->getInstrMemTraceClass(nullptr, MI);
+
+
+
     /*if (MI.isAnnotationLabel()) {
         // don't know yet
     }*/
