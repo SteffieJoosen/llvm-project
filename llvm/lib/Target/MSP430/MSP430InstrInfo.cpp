@@ -29,6 +29,9 @@ using namespace llvm;
 #define GET_INSTRINFO_LATENCY_DESC
 #include "MSP430GenInstrLatencyInfo.inc"
 
+#define GET_INSTRINFO_MEMTRACE_DESC
+#include "MSP430GenInstrMemTraceInfo.inc"
+
 // Pin the vtable to this file.
 void MSP430InstrInfo::anchor() {}
 
@@ -338,6 +341,17 @@ unsigned MSP430InstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
 
   return L;
 }
+
+StringRef MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *ItinData, const MachineInstr &MI,
+                                                 unsigned int *PredCost) {
+    StringRef instr_class = "no class";
+    auto &instr = MSP430::Instruction_classes[MI.getDesc().getOpcode()];
+    instr_class = instr[1];
+    return  instr_class;
+
+}
+
+
 
 /// Insert a noop into the instruction stream at the specified point.
 void MSP430InstrInfo::insertNoop(MachineBasicBlock &MBB,

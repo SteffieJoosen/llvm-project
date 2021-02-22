@@ -207,8 +207,9 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
               break;
 
           }
-          break;
+
         }
+        break;
 
       case 1: // Indexed, symbolic, absolute
         if (opcode.rfind("br", 0) == 0) { // Bm
@@ -258,8 +259,9 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
               }
               break;
             }
-          break;
+
         }
+        break;
 
       case 2:
         if (opcode.rfind("br", 0) == 0) { // Bm
@@ -461,7 +463,7 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
   OS << "namespace llvm {\n\n";
   OS << "namespace " << Namespace << " {\n";
 
-  OS << "static const string Generated_Instructions[][2] = {\n";
+  OS << "static const StringRef Instruction_classes[][2] = {\n";
 
 
   unsigned Num = 0;

@@ -16,21 +16,21 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "msp430-DMA-defender"
+#define DEBUG_TYPE "msp430-dma-defender"
 
 // This internal switch can be used to turn off the DMA defender
 static cl::opt<bool>
         Enable(DEBUG_TYPE "-enable",
                cl::desc("Enable the MSP430 DMA defender"),
-               cl::init(false), cl::Hidden);
+               cl::init(true), cl::Hidden);
 static cl::opt<bool>
         EmitCFG(DEBUG_TYPE "-emit-cfg",
                 cl::desc("Emit control flow graph (GraphViz)"),
-                cl::init(false), cl::Hidden);
+                cl::init(true), cl::Hidden);
 static cl::opt<bool>
         SaveCFG(DEBUG_TYPE "-save-cfg",
                 cl::desc("Save control flow graph (GraphViz)"),
-                cl::init(false), cl::Hidden);
+                cl::init(true), cl::Hidden);
 
 // TODO: Give credit to IfConversion pass?
 //         (only if idea of branch-patterns is used)
@@ -39,7 +39,7 @@ static cl::opt<bool>
 
 namespace {
 
-/// Defends agains DMA attacks
+/// Defends against DMA attacks
     class MSP430DMADefenderPass : public MachineFunctionPass {
     public:
 
