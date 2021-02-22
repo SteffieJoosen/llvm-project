@@ -22,11 +22,11 @@ using namespace llvm;
 static cl::opt<bool>
         Enable(DEBUG_TYPE "-enable",
                cl::desc("Enable the MSP430 DMA defender"),
-               cl::init(true), cl::Hidden);
+               cl::init(false), cl::Hidden);
 static cl::opt<bool>
         EmitCFG(DEBUG_TYPE "-emit-cfg",
                 cl::desc("Emit control flow graph (GraphViz)"),
-                cl::init(true), cl::Hidden);
+                cl::init(false), cl::Hidden);
 static cl::opt<bool>
         SaveCFG(DEBUG_TYPE "-save-cfg",
                 cl::desc("Save control flow graph (GraphViz)"),
@@ -1044,6 +1044,19 @@ void MSP430DMADefenderPass::ReplaceSuccessor(
 
     // Update control-flow analysis
     ReAnalyzeControlFlow(*MBB);
+}
+
+static void BuildErrorInstr(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    // TODO: this is just a dummy, replace it with a better error (used for testing)
+    // SUB #0, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::SUB16rr), MSP430::CG).addImm(0);
+}
+
+static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    // ADD #0, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16rr), MSP430::CG).addImm(0);
 }
 
 // !TODO: Should it be "MOV16rc" or "MOV16ri" ??? (because of immediate
@@ -2208,21 +2221,19 @@ void MSP430DMADefenderPass::ClassifyBranches() {
 void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock &MBB,
                                                 MachineBasicBlock::iterator I) {
-    auto Latency = TII->getInstrLatency(nullptr, MI);
+    //auto Latency = TII->getInstrLatency(nullptr, MI);
+    auto instr_class = TII->getInstrMemTraceClass(nullptr, MI);
 
     if (MI.isAnnotationLabel())
         return;
 
-    // TODO: This code is MSP430-specific. It must be target-independent and
-    //        should probably be described in the target description files.
-    // TODO: What about non-deterministic Sancus crypto instructions?
-    switch (Latency) {
-        case 1: BuildNOP1(MBB, I, TII); break;
-        case 2: BuildNOP2(MBB, I, TII); break;
-        case 3: BuildNOP3(MBB, I, TII); break;
-        case 4: BuildNOP4(MBB, I, TII); break;
-        case 5: BuildNOP5(MBB, I, TII); break;
-        case 6: BuildNOP6(MBB, I, TII); break;
+    switch (instr_class) {
+        case -1: BuildErrorInstr(MBB, I, TII); break;
+        case 0: BuildErrorInstr(MBB, I, TII); break;
+        case 1: Build_1_0_0_1(MBB, I, TII); break;
+        case 2: BuildErrorInstr(MBB, I, TII); break;
+        /*case 5: BuildNOP5(MBB, I, TII); break;
+        case 6: BuildNOP6(MBB, I, TII); break;*/
         default:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
             MI.dump();
@@ -3382,7 +3393,7 @@ bool MSP430DMADefenderPass::runOnMachineFunction(MachineFunction &MF) {
     bool Changed = false;
     const TargetSubtargetInfo &STI = MF.getSubtarget();
     this->MF = &MF;
-    //TII=static_cast<const MSP430InstrInfo *>(MF->getSubtarget().getInstrInfo());
+    //TII=static_cast<const MSP430InstrInfo *>(MF.getSubtarget().getInstrInfo());
     //TLI = STI.getTargetLowering();
     MRI = &MF.getRegInfo();
     TII = STI.getInstrInfo();

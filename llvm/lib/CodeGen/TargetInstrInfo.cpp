@@ -1162,6 +1162,11 @@ unsigned TargetInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   return ItinData->getStageLatency(MI.getDesc().getSchedClass());
 }
 
+signed int TargetInstrInfo::getInstrMemTraceClass(const InstrItineraryData *ItinData, const MachineInstr &MI,
+                                                 unsigned int *PredCost) const {
+    return -1;
+}
+
 bool TargetInstrInfo::hasLowDefLatency(const TargetSchedModel &SchedModel,
                                        const MachineInstr &DefMI,
                                        unsigned DefIdx) const {
