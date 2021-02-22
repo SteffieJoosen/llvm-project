@@ -3473,7 +3473,7 @@ INITIALIZE_PASS_END(MSP430NemesisDefenderPass, DEBUG_TYPE,
                     "X86 cmov Conversion", false, false)
 #endif
 static RegisterPass<MSP430NemesisDefenderPass> X(DEBUG_TYPE,
-                                                 "MSP430 Nemesis Defender Pass",
+                                                 "MSP430 Nem Defender Pass",
                                                  false /* Only looks at CFG */,
                                                  false /* Analysis Pass */);
 
