@@ -471,15 +471,17 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
 
     Record *Inst = II->TheDef;
     auto generated_instructions = ComputeMemoryTraceClass(II, OS);
+    OS << "/* " << Num << "*/ "
+       << "{"
+       << "\"" << generated_instructions[0].first;
+    for (unsigned i = 1; i < generated_instructions.size() -1; i++){
+        OS  << " ||         " << generated_instructions[i].first;
 
-    for (unsigned i = 0; i < generated_instructions.size(); i++){
-      OS << "/* " << Num << "*/ "
-          << "{\"" << generated_instructions[i].first << "\" , \"" << generated_instructions[i].second << "\"}, "
-          << "// " << Namespace << "::" << Inst->getName() << "\n";
     }
+    OS  << "\", \""
+        << generated_instructions[0].second << "\"}, "
+        << "// " << Namespace << "::" << Inst->getName() << "\n";
     Num++;
-
-
 
   }
 

@@ -347,10 +347,39 @@ signed int MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *Itin
     auto &instr = MSP430::Instruction_classes[MI.getDesc().getOpcode()];
     instr_class = instr[1];
     if (instr_class.str().compare("1 | 0 | 0 | 1") == 0) {
-        return 1;
-    } else if (instr_class.str().compare("4 | 0000 | 0001 | 1001") == 0){
-        return 2;
-    } else {
+        return 10;
+    } else if (instr_class.str().compare("2 | 00 | 00 | 11") == 0) {
+        return 20;
+    } else if (instr_class.str().compare("2 | 00 | 10 | 01") == 0) {
+        return 21;
+    } else if (instr_class.str().compare("3 | 000 | 010 | 101") == 0) {
+        return 30;
+    } else if (instr_class.str().compare("3 | 000 | 101 | 001") == 0) {
+        return 31;
+    } else if (instr_class.str().compare("3 | 000 | 001 | 001") == 0) {
+        return 32;
+    } else if (instr_class.str().compare("3 | 000 | 100 | 000") == 0) { // RET-instruction
+        return 33;
+    } else if (instr_class.str().compare("4 | 0000 | 0101 | 1001") == 0) {
+        return 40;
+    } else if (instr_class.str().compare("4 | 0000 | 0001 | 1001") == 0) {
+        return 41;
+    } else if (instr_class.str().compare("5 | 00000 | 00101 | 11001") == 0) {
+        return 50;
+    } else if (instr_class.str().compare("5 | 00000 | 10101 | 10001") == 0) {
+        return 51;
+    } else if (instr_class.str().compare("5 | 00000 | 00001 | 11001") == 0) {
+        return 52;
+    } else if (instr_class.str().compare("5 | 00000 | 10001 | 10001") == 0) {
+        return 53;
+    } else if (instr_class.str().compare("5 | 00000 | 10000 | 00000") == 0) { // RETI-instruction
+        return 54;
+    } else if (instr_class.str().compare("6 | 000000 | 010101 | 110001") == 0) {
+        return 60;
+    } else if (instr_class.str().compare("6 | 000000 | 010001 | 110001") == 0) {
+        return 61;
+    }
+    else {
         return 0;
     }
 }

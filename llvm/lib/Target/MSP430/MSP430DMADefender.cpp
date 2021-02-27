@@ -1046,17 +1046,106 @@ void MSP430DMADefenderPass::ReplaceSuccessor(
     ReAnalyzeControlFlow(*MBB);
 }
 
-static void BuildErrorInstr(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static void BuildErrorInstr(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+                            const TargetInstrInfo *TII) {
     DebugLoc DL;
-    // TODO: this is just a dummy, replace it with a better error (used for testing)
-    // SUB #0, R3
-    BuildMI(MBB, I, DL, TII->get(MSP430::SUB16rr), MSP430::CG).addImm(0);
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(42);
 }
 
 static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    // ADD #0, R3
-    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16rr), MSP430::CG).addImm(0);
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(410);
+}
+static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(420);
+}
+
+static void Build_2_00_10_01(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(421);
+}
+
+static void Build_3_000_010_101(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(430);
+}
+
+static void Build_3_000_101_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(431);
+}
+
+static void Build_3_000_001_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(432);
+}
+
+static void Build_3_000_100_000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(433);
+}
+
+static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(440);
+}
+
+static void Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(441);
+}
+
+static void Build_5_00000_00101_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(450);
+}
+
+static void Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(451);
+}
+
+static void Build_5_00000_00001_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(452);
+}
+
+static void Build_5_00000_10001_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(453);
+}
+
+static void Build_5_00000_10000_00000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(454);
+}
+
+static void Build_6_000000_010101_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(460);
+}
+
+static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(461);
 }
 
 // !TODO: Should it be "MOV16rc" or "MOV16ri" ??? (because of immediate
@@ -2221,24 +2310,36 @@ void MSP430DMADefenderPass::ClassifyBranches() {
 void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock &MBB,
                                                 MachineBasicBlock::iterator I) {
-    //auto Latency = TII->getInstrLatency(nullptr, MI);
+    auto Latency = TII->getInstrLatency(nullptr, MI);
     auto instr_class = TII->getInstrMemTraceClass(nullptr, MI);
-
     if (MI.isAnnotationLabel())
         return;
 
+    // TODO: This code is MSP430-specific. It must be target-independent and
+    //        should probably be described in the target description files.
+    // TODO: What about non-deterministic Sancus crypto instructions?
     switch (instr_class) {
-        case -1: BuildErrorInstr(MBB, I, TII); break;
-        case 0: BuildErrorInstr(MBB, I, TII); break;
-        case 1: Build_1_0_0_1(MBB, I, TII); break;
-        case 2: BuildErrorInstr(MBB, I, TII); break;
-        /*case 5: BuildNOP5(MBB, I, TII); break;
-        case 6: BuildNOP6(MBB, I, TII); break;*/
+        case 10: Build_1_0_0_1(MBB, I, TII); break;
+        case 20: Build_2_00_00_11(MBB, I, TII); break; //MOV
+        case 21: Build_2_00_10_01(MBB, I, TII); break;
+        case 30: Build_3_000_010_101(MBB, I, TII); break; //CMP
+        case 31: Build_3_000_101_001(MBB, I, TII); break;
+        case 32: Build_3_000_001_001(MBB, I, TII); break;
+        case 33: Build_3_000_100_000(MBB, I, TII); break;
+        case 40: Build_4_0000_0101_1001(MBB, I, TII); break;
+        case 41: Build_4_0000_0001_1001(MBB, I, TII); break;
+        case 50: Build_5_00000_00101_11001(MBB, I, TII); break;
+        case 51: Build_5_00000_10101_10001(MBB, I, TII); break;
+        case 52: Build_5_00000_00001_11001(MBB, I, TII); break;
+        case 53: Build_5_00000_10001_10001(MBB, I, TII); break;
+        case 54: Build_5_00000_10000_00000(MBB, I, TII); break;
+        case 60: Build_6_000000_010101_110001(MBB, I, TII); break;
+        case 61: Build_6_000000_010001_110001(MBB, I, TII); break;
         default:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
             MI.dump();
 #endif
-            llvm_unreachable("Unexpected instruction latency");
+            llvm_unreachable("Unexpected memory trace class");
     }
 }
 
