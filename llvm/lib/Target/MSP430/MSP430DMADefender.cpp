@@ -219,7 +219,7 @@ namespace {
 
         void RegisterDefs(MBBInfo &BBI);
 
-        void CompensateInstr(const MachineInstr &MI, MachineBasicBlock &MBB,
+        unsigned CompensateInstr(const MachineInstr &MI, MachineBasicBlock &MBB,
                              MachineBasicBlock::iterator MBBI);
         void CompensateCall(const MachineInstr &Call, MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator MBBI);
@@ -1046,106 +1046,148 @@ void MSP430DMADefenderPass::ReplaceSuccessor(
     ReAnalyzeControlFlow(*MBB);
 }
 
-static void BuildErrorInstr(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+static unsigned BuildErrorInstr(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                             const TargetInstrInfo *TII) {
     DebugLoc DL;
     //! TODO: this is just a dummy, replace it with a better error (used for testing)
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(42);
 }
 
-static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(410);
+    // MOV #0, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(0);
+    return 1;
 }
-static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(420);
-}
-
-static void Build_2_00_10_01(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
-    DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(421);
+    // MOV #420, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(420);
+    return 1;
 }
 
-static void Build_3_000_010_101(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_2_00_10_01(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(430);
+    // MOV #0x0402, R3; MOV @R3, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(402);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
+    return 2;
 }
 
-static void Build_3_000_101_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_3_000_010_101(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(431);
+    // MOV #0x0402, R3; MOV 2(R3), R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(402);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rm), MSP430::CG).addReg(MSP430:CG).addImm(430);
+    return 2;
 }
 
-static void Build_3_000_001_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_3_000_101_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    // MOV #0x0402, R3; SWPB @R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::R4).addImm(402);
+    BuildMI(MBB, I, DL, TII->get(MSP430::SWPB16n)).addReg(MSP430::CG);
+    return 2;
+}
+
+static unsigned Build_3_000_001_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL;
+    //! TODO: what to do about a PUSH?
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(432);
+    return 1;
 }
 
-static void Build_3_000_100_000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
-    DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+static unsigned Build_3_000_100_000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+    DebugLoc DL; // RET
+    //! TODO: what to do about a RET?
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(433);
+    return 1;
 }
 
-static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(440);
+    // indirect benchmark program
+    // MOV #0x0402, R3; RRA 2(R3)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(402);
+    BuildMI(MBB, I, DL, TII->get(MSP430::RRA16m), MSP430::CG).addImm(2);
+    return 2;
 }
 
-static void Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    //! TODO: what to do about a PUSH?
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(441);
+    return 1;
 }
 
-static void Build_5_00000_00101_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_5_00000_00101_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(450);
+    // MOV #0x0406, R3; ADD #42, 2(R3)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(406);
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), MSP430::CG).addImm(2).addImm(42);
+    return 2;
 }
 
-static void Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(451);
+    // MOV #0x0402, R3; ADD @R3, 2(R3)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(402);
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mn), MSP430::CG).addImm(2).addReg(MSP430::CG)
+    return 2;
 }
 
-static void Build_5_00000_00001_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_5_00000_00001_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(452);
+    // MOV #0x0406, R3; MOV #42, 2(R3)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(406);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mi), MSP430::CG).addImm(2).addImm(42);
+    return 2;
 }
 
-static void Build_5_00000_10001_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_5_00000_10001_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(453);
+    // MOV #0x0402, R3; MOV @R3, 2(R3)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(402);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mn), MSP430::CG).addImm(2).addReg(MSP430::CG)
+    return 2;
 }
 
-static void Build_5_00000_10000_00000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_5_00000_10000_00000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
+    //! TODO: what to do about a RETI
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(454);
+    return 1;
 }
 
-static void Build_6_000000_010101_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_6_000000_010101_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(460);
+    // MOV #0x0402, R3; ADD 2(R3), 2(R3)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(402);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), MSP430::CG)
+            .addImm(0)
+            .addReg(MSP430::CG)
+            .addImm(0);
+    return 2;
 }
 
-static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
+static unsigned Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII) {
     DebugLoc DL;
     //! TODO: this is just a dummy, replace it with a better error (used for testing)
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(461);
+    return 1;
+}
+
+static bool CheckAccessedMemoryRegions(MachineInstr &MI) {
+    /*for(int i = 0; i < MI.getNumOperands(); i++) {
+       if(not MI.getOperand(i).isReg() and not MI.getOperand(i).isImm() and not MI.getOperand(i).isCImm() and not MI.getOperand(i).isFPImm()){
+           // Indirect, symbolic or absolute operand
+           MI.getOperand(i).MO_GlobalAddress;
+       }
+    }*/
+    for (auto op : MI.memoperands()) {
+        auto value = op->getPointerInfo().V;
+        //if (! value.isNull() && value.getAddrOfPtr1() )
+    }
 }
 
 // !TODO: Should it be "MOV16rc" or "MOV16ri" ??? (because of immediate
@@ -1737,17 +1779,36 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                         LLVM_DEBUG(dbgs() << "  " << GetName(BB) << ": ");
                         if (MII[BB] == BB->end()) {
                             LLVM_DEBUG(dbgs() << "insert nop (end-of-block)");
-                            CompensateInstr(RI, *BB, MII[BB]);
+                            if (CompensateInstr(RI, *BB, MII[BB]) == 2) {
+                                // MOV #42, R3
+                                //CompensateInstr(*(MII[BB]))
+                                //BuildMI(Ref,MII.at(Ref),DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(42);
+                                BuildMI(*Ref, --MII[Ref], DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(45);
+                                MII[Ref]++;
+                                //! TODO: MII[Ref]++ needed? simulation did not indicate so
+                            }
                         } else if (MII[BB] == MTI[BB]) {
                             LLVM_DEBUG(dbgs() << "insert nop (begin-of-branching-code)");
-                            CompensateInstr(RI, *BB, MII[BB]);
+                            if (CompensateInstr(RI, *BB, MII[BB]) == 2) {
+                                // MOV #42, R3
+                                //CompensateInstr(*(MII[BB]))
+                                BuildMI(*Ref, --MII[Ref], DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(45);
+                                MII[Ref]++;
+                                //! TODO: MII[Ref]++ needed? simulation did not indicate so
+                            }
                         } else {
                             auto &MI = *MII[BB];
                             auto MIL = TII->getInstrLatency(nullptr, MI);
                             LLVM_DEBUG(dbgs() << MI << " (latency=" << MIL << "): ");
                             if (RIL != MIL) {
                                 LLVM_DEBUG(dbgs() << "insert nop (non-matching-latency)");
-                                CompensateInstr(RI, *BB, MII[BB]);
+                                if (CompensateInstr(RI, *BB, MII[BB]) == 2) {
+                                    // MOV #42, R3
+                                    //CompensateInstr(*(MII[BB]))
+                                    BuildMI(*Ref, --MII[Ref], DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(45);
+                                    MII[Ref]++;
+                                    //! TODO: MII[Ref]++ needed? simulation did not indicate so
+                                }
                             } else {
                                 LLVM_DEBUG(dbgs() << "latencies match");
                                 MII[BB]++;
@@ -2307,34 +2368,35 @@ void MSP430DMADefenderPass::ClassifyBranches() {
 // TODO: Verify correctness of these nops (see also the note in the MSP430x1xx
 //                                            Family User's guide).
 //
-void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
+unsigned MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock &MBB,
                                                 MachineBasicBlock::iterator I) {
     auto Latency = TII->getInstrLatency(nullptr, MI);
+    //CheckAccessedMemoryRegions(MI);
     auto instr_class = TII->getInstrMemTraceClass(nullptr, MI);
     if (MI.isAnnotationLabel())
-        return;
+        return 0;
 
     // TODO: This code is MSP430-specific. It must be target-independent and
     //        should probably be described in the target description files.
     // TODO: What about non-deterministic Sancus crypto instructions?
     switch (instr_class) {
-        case 10: Build_1_0_0_1(MBB, I, TII); break;
-        case 20: Build_2_00_00_11(MBB, I, TII); break; //MOV
-        case 21: Build_2_00_10_01(MBB, I, TII); break;
-        case 30: Build_3_000_010_101(MBB, I, TII); break; //CMP
-        case 31: Build_3_000_101_001(MBB, I, TII); break;
-        case 32: Build_3_000_001_001(MBB, I, TII); break;
-        case 33: Build_3_000_100_000(MBB, I, TII); break;
-        case 40: Build_4_0000_0101_1001(MBB, I, TII); break;
-        case 41: Build_4_0000_0001_1001(MBB, I, TII); break;
-        case 50: Build_5_00000_00101_11001(MBB, I, TII); break;
-        case 51: Build_5_00000_10101_10001(MBB, I, TII); break;
-        case 52: Build_5_00000_00001_11001(MBB, I, TII); break;
-        case 53: Build_5_00000_10001_10001(MBB, I, TII); break;
-        case 54: Build_5_00000_10000_00000(MBB, I, TII); break;
-        case 60: Build_6_000000_010101_110001(MBB, I, TII); break;
-        case 61: Build_6_000000_010001_110001(MBB, I, TII); break;
+        case 10: return Build_1_0_0_1(MBB, I, TII); break;
+        case 20: return Build_2_00_00_11(MBB, I, TII); break; //MOV
+        case 21: return Build_2_00_10_01(MBB, I, TII); break;
+        case 30: return Build_3_000_010_101(MBB, I, TII); break; //CMP
+        case 31: return Build_3_000_101_001(MBB, I, TII); break;
+        case 32: return Build_3_000_001_001(MBB, I, TII); break;
+        case 33: return Build_3_000_100_000(MBB, I, TII); break;
+        case 40: return Build_4_0000_0101_1001(MBB, I, TII); break;
+        case 41: return Build_4_0000_0001_1001(MBB, I, TII); break;
+        case 50: return Build_5_00000_00101_11001(MBB, I, TII); break;
+        case 51: return Build_5_00000_10101_10001(MBB, I, TII); break;
+        case 52: return Build_5_00000_00001_11001(MBB, I, TII); break;
+        case 53: return Build_5_00000_10001_10001(MBB, I, TII); break;
+        case 54: return Build_5_00000_10000_00000(MBB, I, TII); break;
+        case 60: return Build_6_000000_010101_110001(MBB, I, TII); break;
+        case 61: return Build_6_000000_010001_110001(MBB, I, TII); break;
         default:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
             MI.dump();

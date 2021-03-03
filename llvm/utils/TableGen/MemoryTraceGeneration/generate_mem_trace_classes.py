@@ -217,8 +217,8 @@ def generate_instruction(all_instr):
 
     return instr_class
 
-
-all_instr = ' '.join(sys.argv[1:]).split(";")
+print(sys.argv)
+all_instr = ' '.join(sys.argv[1].split('-')).split("__")
 print("Instruction simulated: " + str(all_instr))
 res = generate_instruction(all_instr)
 instr_class = re.sub('\n','',res)
