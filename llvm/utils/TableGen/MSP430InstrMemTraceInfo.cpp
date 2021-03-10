@@ -141,11 +141,9 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
     BitsInit* As = (Inst->getValueAsBitsInit("As"));
     BitsInit* Ad = Inst->getValueAsBitsInit("Ad");
 
-    // For instructions that use register, these vectors are for generating the instructions
+    // For instructions that use memory operands, these vectors are for generating the instructions
     // using all combinations of them
-    std::vector<std::string> source_reg_instructions = generate_source_operand_instructions('r', opcode);
     std::vector<std::string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
-    std::vector<std::string> source_ind_instructions = generate_source_operand_instructions('n', opcode);
 
 
     switch (getValueFromBitsInit(As)) {
@@ -163,47 +161,16 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
             case 1:
               //INS#mr
               //R4 and R5 used
-              // Indexed
-              std::string instr = "mov #0x0406, r5;nop;";
+              // Indexed and symbolic
               if (opcode.rfind("mov", 0) == 0) { // MOV
-                gen_instr_class_pairs.push_back(std::make_pair(instr + opcode + " r4, 2(r5)","4 | 0000 | 0001 | 1001"));
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " r4, 2(r5)","4 | 0000 | 0001 | 1001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4, 0xDFDE","4 | 0000 | 0001 | 1001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4, &0x0406","4 | 0000 | 0001 | 1001"));
               } else {
-                gen_instr_class_pairs.push_back(std::make_pair(instr + opcode + " r4, 2(r5)","4 | 0000 | 0101 | 1001"));
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " r4, 2(r5)","4 | 0000 | 0101 | 1001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4, 0xDFDE","4 | 0000 | 0101 | 1001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4, &0x0406","4 | 0000 | 0101 | 1001"));
               }
-
-              // Indexed mode, use R4 to R15
-              /*for (int i = 0; i < 16; i++){
-                for (int j = 4; j < 16; j++){
-
-                  std::string instr = "mov #0x0406, r" + std::to_string(j) + ";";
-                  instr += source_reg_instructions[i] +"2(r" + std::to_string(j) + ")";
-                  gen_instr.push_back(instr);
-                }
-              }*/
-
-              // Symbolic mode
-              // R4 used
-              // This instruction gave rise to an unexpected clock cycle extra
-              //gen_instr.push_back(opcode + " r4, 0x0406");
-              /*for (int i = 4; i < 16; i++){
-                  std::string instr = source_reg_instructions[i] +"0x0406";
-                  gen_instr.push_back(instr);
-
-              }*/
-
-              // Absolute mode
-              // R4 used
-              if (opcode.rfind("mov", 0) == 0) { // MOV
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " r4, &0x0406","4 | 0000 | 0001 | 1001"));
-              } else {
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " r4, &0x0406","4 | 0000 | 0101 | 1001"));
-              }
-
-              /*for (int i = 4; i < 16; i++){
-                  std::string instr = source_reg_instructions[i] +"&0x0406";
-                  gen_instr.push_back(instr);
-
-              }*/
               break;
 
           }
@@ -214,47 +181,40 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
       case 1: // Indexed, symbolic, absolute
         if (opcode.rfind("br", 0) == 0) { // Bm
           gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode +  " 2(r4)", "simulation fails"));
-          //gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0x0402"," no class"));
-          gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402","simulation fails"));
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0xDFDE","simulation fails"));
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " &0x0402","simulation fails"));
         } else {
           switch (getValueFromBitsInit(Ad)) {
             case 0:
               //INS#rm
               // TODO: wat is B?
               gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode +  " 2(r4), r5", "3 | 000 | 010 | 101"));
-              //gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0x0402, r5","class"));
-              gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402, r5","3 | 000 | 010 | 101"));
-              /*for (int i = 0; i < 14; i++){ // Only twelve general purpose registers for indexed mode + 2 other addressing modes (Sym & Abs)
-                for (int j = 0; j < 16; j++) {
-                  std::string instr = source_mem_instructions[i] +"r" + std::to_string(j);
-                  gen_instr.push_back(instr);
-                }
-              }*/
+              gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0xDFDE, r5","3 | 000 | 010 | 101"));
+              gen_instr_class_pairs.push_back(std::make_pair(opcode + " &0x0402, r5","3 | 000 | 010 | 101"));
+
               break;
             case 1:
               //INS#mm
               std::vector<std::string> v;
               // Indexed source mode
               v.push_back("mov #0x0402, r4;nop;" + opcode +  " 2(r4), ");
-              // Absolute mode
-              v.push_back("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402, ");
+              // Absolute source mode
+              v.push_back(opcode + " &0x0402, ");
               // Symbolic source mode
-              v.push_back(opcode + " 0x0402, ");
+              v.push_back(opcode + " 0xDFDE, ");
 
               // Indexed dest mode
               if (opcode.rfind("mov", 0) == 0) { // MOV
                 for (int i = 0; i < 2; i++) {
                   gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;"+ v[i] + "2(r5)","6 | 000000 | 010001 | 110001"));
-                  // This instruction gave rise to an unexpected clock cycle extra
-                  //gen_instr.push_back(v[i] + "0x0406");
-                  gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;"+ v[i] + "&0x0406","6 | 000000 | 010001 | 110001"));
+                  gen_instr_class_pairs.push_back(std::make_pair(v[i] + "0xDFDE","6 | 000000 | 010001 | 110001"));
+                  gen_instr_class_pairs.push_back(std::make_pair(v[i] + "&0x0406","6 | 000000 | 010001 | 110001"));
                 }
               } else {
                 for (int i = 0; i < 2; i++) {
                   gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;"+ v[i] + "2(r5)","6 | 000000 | 010101 | 110001"));
-                  // This instruction gave rise to an unexpected clock cycle extra
-                  //gen_instr.push_back(v[i] + "0x0406");
-                  gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;"+ v[i] + "&0x0406","6 | 000000 | 010101 | 110001"));
+                  gen_instr_class_pairs.push_back(std::make_pair(v[i] + "0xDFDE","6 | 000000 | 010101 | 110001"));
+                  gen_instr_class_pairs.push_back(std::make_pair(v[i] + "&0x0406","6 | 000000 | 010101 | 110001"));
                 }
               }
               break;
@@ -275,14 +235,12 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
               //INS#mn
               if (opcode.rfind("mov", 0) == 0) { // MOV
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;mov #0x0402, r4;nop;" + opcode + " @r4, 2(r5)","5 | 00000 | 10001 | 10001"));
-                // This instruction gave rise to an unexpected extra clock cycle
-                //gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4, 0x0406");
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;mov #0x0406, 0x0406;nop;" + opcode + " @r4, &0x0406","5 | 00000 | 10001 | 10001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " @r4, 0xDFDE","5 | 00000 | 10001 | 10001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " @r4, &0x0406","5 | 00000 | 10001 | 10001"));
               } else {
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;mov #0x0402, r4;nop;" + opcode + " @r4, 2(r5)","5 | 00000 | 10101 | 10001"));
-                // This instruction gave rise to an unexpected extra clock cycle
-                //gen_instr.push_back("mov #0x0402, r4;nop;" + opcode + " @r4, 0x0406");
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;mov #0x0406, 0x0406;nop;" + opcode + " @r4, &0x0406","5 | 00000 | 10101 | 10001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " @r4, 0xDFDE","5 | 00000 | 10101 | 10001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " @r4, &0x0406","5 | 00000 | 10101 | 10001"));
               }
             break;
           }
@@ -320,25 +278,21 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0045, 2(r5)","5 | 00000 | 00001 | 11001"));
                 // This instruction gave rise to an unexpected extra clock cycle
                 //gen_instr.push_back(opcode + " #0x0045, 0x0406");
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, 0xDFDE","5 | 00000 | 00001 | 11001"));
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, &0x0406","5 | 00000 | 00001 | 11001"));
               } else {
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0045, 2(r5)","5 | 00000 | 00101 | 11001"));
-                // This instruction gave rise to an unexpected extra clock cycle
-                //gen_instr.push_back(opcode + " #0x0045, 0x0406");
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, &0x0406","5 | 00000 | 00101 | 11001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0045, 0xDFDE","5 | 00000 | 00101 | 11001"));
+                gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0045, &0x0406","5 | 00000 | 00101 | 11001"));
               }
 
 
             }
             else { // INS#mp (no MOV instructions here)
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " @r4+, 2(r5)","5 | 00000 | 10101 | 10001"));
-                // This instruction gave rise to an unexpected extra clock cycle
-                //gen_instr.push_back(opcode + " @r4+, 0x0406");
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " @r4+, &0x0406","5 | 00000 | 10101 | 10001"));
-
-
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;mov #0x0406, r5;nop;" + opcode + " @r4+, 2(r5)","5 | 00000 | 10101 | 10001"));
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4+, 0xDFDE","5 | 00000 | 10101 | 10001"));
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4+, &0x0406","5 | 00000 | 10101 | 10001"));
             }
-
             break;
           }
           break;
@@ -375,12 +329,12 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
         case 1:
           if (opcode.rfind("br", 0) == 0 || opcode.rfind("call",0) == 0) { // BRCALLm
             gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode +  " 2(r4)","simulation fails"));
-            //gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0x0402","cl"));
-            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402","simulation fails"));
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0xDFDE","simulation fails"));
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " &0x0402","simulation fails"));
           } else {
             gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode +  " 2(r4)","4 | 0000 | 0101 | 1001"));
-            //gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0x0402","cl"));
-            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, 0x0402;nop;" + opcode + " &0x0402","4 | 0000 | 0101 | 1001"));
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " 0xDFDE","4 | 0000 | 0101 | 1001"));
+            gen_instr_class_pairs.push_back(std::make_pair(opcode + " &0x0402","4 | 0000 | 0101 | 1001"));
           }
 
           break;
@@ -402,7 +356,7 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
 
           }
           else { // INS#p
-            gen_instr_class_pairs.push_back(std::make_pair(opcode + " @r4+","3 | 000 | 101 | 001"));
+            gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4+","3 | 000 | 101 | 001"));
           }
           break;
         default:
@@ -428,14 +382,12 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
         //INS#mc
         if (opcode.rfind("mov", 0) == 0) { // MOV
           gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0008, 2(r5)","4 | 0000 | 0001 | 1001"));
-          // This instruction gave rise to an unexpected extra clock cycle
-          //gen_instr.push_back(opcode + " #0x0008, 0x0406");
-          gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0008, &0x0406","4 | 0000 | 0001 | 1001"));
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0008, 0xDFDE","4 | 0000 | 0001 | 1001"));
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0008, &0x0406","4 | 0000 | 0001 | 1001"));
         } else {
           gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0008, 2(r5)","4 | 0000 | 0101 | 1001"));
-          // This instruction gave rise to an unexpected extra clock cycle
-          //gen_instr.push_back(opcode + " #0x0008, 0x0406");
-          gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0008, &0x0406","4 | 0000 | 0101 | 1001"));
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0008, 0xDFDE","4 | 0000 | 0101 | 1001"));
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0008, &0x0406","4 | 0000 | 0101 | 1001"));
         }
 
         break;
@@ -475,7 +427,7 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
        << "{"
        << "\"" << generated_instructions[0].first;
     for (unsigned i = 1; i < generated_instructions.size() -1; i++){
-        OS  << " ||         " << generated_instructions[i].first;
+        OS  << " --- " << generated_instructions[i].first;
 
     }
     OS  << "\", \""
