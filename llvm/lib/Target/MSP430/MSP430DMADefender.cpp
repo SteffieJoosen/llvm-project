@@ -1153,17 +1153,26 @@ static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlo
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(461);
 }
 
-static bool CheckAccessedMemoryRegions(MachineInstr &MI) {
+static bool CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs) {
     /*for(int i = 0; i < MI.getNumOperands(); i++) {
        if(not MI.getOperand(i).isReg() and not MI.getOperand(i).isImm() and not MI.getOperand(i).isCImm() and not MI.getOperand(i).isFPImm()){
            // Indirect, symbolic or absolute operand
            MI.getOperand(i).MO_GlobalAddress;
        }
     }*/
-    for (auto op : MI.memoperands()) {
-        auto value = op->getPointerInfo().V;
-        //if (! value.isNull() && value.getAddrOfPtr1() )
+    for (MachineBasicBlock *BB : BBs) {
+        for (auto instr = BB->instr_begin(); instr != BB->instr_end(); ++instr){
+            for (auto op: instr->memoperands()) {
+                auto value = op->getOpaqueValue(); //op->getValue();
+                std::size_t address = reinterpret_cast<std::size_t>(value);
+                if(address < 0x0200){
+                    // peripheral space accessed
+                } //else if (0x0200 <= address && address <)
+                //! TODO: how large will data and program space be?
+            }
+        }
     }
+
 }
 
 // !TODO: Should it be "MOV16rc" or "MOV16ri" ??? (because of immediate
@@ -1177,7 +1186,7 @@ static void BuildNOP1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     DebugLoc DL; // FIXME: Where to get DebugLoc from?
 
     // MOV  #0, R3       ; 1 cycle , 1 word
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(0);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV6rc), MSP430::CG).addImm(0);
 }
 
 static void BuildNOP2(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
@@ -3158,7 +3167,6 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
     Successors Succs;
     Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
     Register UnusedReg = FindUnusedRegisters(Succs.Succs);
-    // HIER
     //! TODO: inserts instruction right before BB->end(), OK?
     // MOV #0x0402, RUnused
     BuildMI(*(BBI.BB), --BBI.BB->end(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::MOV16rc), UnusedReg).addImm(402);
