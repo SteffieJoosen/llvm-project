@@ -201,6 +201,9 @@ namespace {
         void CanonicalizeTerminatingInstructions(MachineBasicBlock *MBB);
         void AlignTwoWayBranch(MachineBasicBlock &MBB);
 
+        void CheckAccessedMemoryRegions(MachineBasicBlock *Entry, std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII, Register UnusedReg);
+        MachineBasicBlock *FindGuiltySuccesor(MachineBasicBlock *BB);
+
         // Returns information about sensitivity of machine instructions and basic
         //  block info.
         bool IsSecretDependent(MachineInstr *MI);
@@ -1153,27 +1156,62 @@ static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlo
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(461);
 }
 
-static bool CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs) {
-    /*for(int i = 0; i < MI.getNumOperands(); i++) {
-       if(not MI.getOperand(i).isReg() and not MI.getOperand(i).isImm() and not MI.getOperand(i).isCImm() and not MI.getOperand(i).isFPImm()){
-           // Indirect, symbolic or absolute operand
-           MI.getOperand(i).MO_GlobalAddress;
-       }
-    }*/
+void MSP430DMADefenderPass::CheckAccessedMemoryRegions(MachineBasicBlock *Entry, std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII, Register UnusedReg) {
+    //! TODO: this number is just average, find out dynamically
+    DebugLoc DL;
+    unsigned ENDOFDATAMEM = 0x0200 + (0x10000 - 0x0200)/2;
     for (MachineBasicBlock *BB : BBs) {
         for (auto instr = BB->instr_begin(); instr != BB->instr_end(); ++instr){
-            for (auto op: instr->memoperands()) {
-                auto value = op->getOpaqueValue(); //op->getValue();
-                std::size_t address = reinterpret_cast<std::size_t>(value);
-                if(address < 0x0200){
-                    // peripheral space accessed
-                } //else if (0x0200 <= address && address <)
-                //! TODO: how large will data and program space be?
+           if (instr->mayLoadOrStore()){
+
+                auto op = instr->memoperands().begin();
+                auto NewBB = CreateMachineBasicBlock("align",true);
+                // MOV #memop, RUnused -> works: tested with GTKWave
+                // CMP #0x0200, RUnused
+                // JMP RETBB
+               /*BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::JMP)).addMBB(Exit);
+               BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::CMP16rc),UnusedReg).addImm(0x0200);
+               BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::MOV16rc), UnusedReg).addMemOperand(*op);*/
+
+                auto JBB = CreateMachineBasicBlock("align", true);
+                auto RETBB = CreateMachineBasicBlock("align", true);
+
+                JBB->addSuccessor(BB);
+                // Update MBB accordingly
+                auto EInfo = GetInfo(*JBB);
+                ReplaceSuccessor(Entry, BB, JBB);
+                //RemoveTerminationCode(*Entry);
+                TII->insertBranch(*JBB, BB, RETBB, EInfo->BrCond, DL);
+               //BuildMI(*JBB, JBB->begin(), DL, TII->get(MSP430::JMP)).addMBB(BB);
+               BuildMI(*RETBB, RETBB->begin(), DL, TII->get(MSP430::RET));
+
+                // Update control flow analysis
+                ReAnalyzeControlFlow(*Entry);
+                AnalyzeControlFlow(*JBB);
+
+                auto JBBI = GetInfo(*JBB);
+                JBBI->Orig = CloneMBB(JBB, false); // TODO: Refactor the bookkeeping of
+                //        the original block contents
+                assert(JBB->succ_size() == 1);
+                assert(JBB->pred_size() == 1);
+           }
+
+        }
+    }
+}
+
+MachineBasicBlock *MSP430DMADefenderPass::FindGuiltySuccesor(MachineBasicBlock *BB) {
+    for (MachineBasicBlock *Succ : BB->successors()) {
+        for (auto instr = Succ->instr_begin(); instr != Succ->instr_end(); ++instr) {
+            if (instr->mayLoadOrStore()) {
+                return Succ;
             }
         }
     }
-
+    return nullptr;
 }
+
+
 
 // !TODO: Should it be "MOV16rc" or "MOV16ri" ??? (because of immediate
 //        value of one) (look also at other places for this choice)
@@ -1186,7 +1224,7 @@ static void BuildNOP1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     DebugLoc DL; // FIXME: Where to get DebugLoc from?
 
     // MOV  #0, R3       ; 1 cycle , 1 word
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV6rc), MSP430::CG).addImm(0);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(0);
 }
 
 static void BuildNOP2(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
@@ -1194,7 +1232,7 @@ static void BuildNOP2(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     DebugLoc DL; // FIXME: Where to get DebugLoc from?
 
 #if 0
-    // TODO: This might be problemtic, as entering a JMP in the middle
+    // TODO: This might be problematic, as entering a JMP in the middle
   //        of a MBB breaks the well-formedness of the MBB
   // JMP  $+2          ; 2 cycles, 1 word
   BuildMI(MBB, I, DL, TII->get(MSP430::JMP)).addImm(0);
@@ -2105,7 +2143,7 @@ void MSP430DMADefenderPass::PerformSensitivityAnalysis() {
         N = SensitivityInfo.size() + SensitivityInfo2.size();
         for (auto &MBB : *MF) {
             // Ignore the canonical exit node. Code asserts because the reaching def
-            // analysis has not been peformed on this node. (Fix this?)
+            // analysis has not been performed on this node. (Fix this?)
             if (&MBB == CanonicalExit)
                 continue;
 
@@ -3167,10 +3205,12 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
     Successors Succs;
     Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
     Register UnusedReg = FindUnusedRegisters(Succs.Succs);
-    //! TODO: inserts instruction right before BB->end(), OK?
-    // MOV #0x0402, RUnused
-    BuildMI(*(BBI.BB), --BBI.BB->end(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::MOV16rc), UnusedReg).addImm(402);
+    //CheckAccessedMemoryRegions(Succs.Succs, TII, UnusedReg);
+
+
+
     while (!Succs.Succs.empty()) {
+
 
 #if 0
         MF->viewCFGOnly();
@@ -3205,6 +3245,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
 #endif
 
             Succs = ComputeSuccessors(S, ExitOfSR);
+            Register UnusedReg = FindUnusedRegisters(Succs.Succs);
         }
     }
 
@@ -3423,8 +3464,21 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
         MBBInfo &BBI = KV.second;
         // BBI.IsPartOfSensitiveRegion makes sure that only
         // outer sensitive branches will be considered here
-        // (Note that this is not the same as "overlapping senstive regions")
+        // (Note that this is not the same as "overlapping sensitive regions")
         if (IsSecretDependent(&BBI) && (! BBI.IsPartOfSensitiveRegion) ) {
+            //! TODO this is work that also 'AlignSensitiveBranch()' does...
+            auto ExitOfSR = GetExitOfSensitiveBranch(BBI.BB);
+            Successors Succs;
+            Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
+            //! TODO: Make this a set of unused registers and delete UnusedReg. The remaining regs can be used in
+            //! CheckAccessedMemoryRegions()
+            Register UnusedReg = FindUnusedRegisters(Succs.Succs);
+            CheckAccessedMemoryRegions(BBI.BB,Succs.Succs, TII, UnusedReg);
+            //BuildMI(*BBI.BB, --BBI.BB->end(), BBI.BB->findDebugLoc(BBI.BB->instr_end()), TII->get(MSP430::JMP)).addMBB(NewBB);
+            // MOV #0x0402, RUnused
+
+            BuildMI(*(BBI.BB), --BBI.BB->end(), BBI.BB->findDebugLoc(BBI.BB->end()),
+                    TII->get(MSP430::MOV16rc), UnusedReg).addImm(0x0402);
             AlignSensitiveBranch(BBI);
         }
     }

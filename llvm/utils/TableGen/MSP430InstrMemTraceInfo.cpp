@@ -141,10 +141,6 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
     BitsInit* As = (Inst->getValueAsBitsInit("As"));
     BitsInit* Ad = Inst->getValueAsBitsInit("Ad");
 
-    // For instructions that use memory operands, these vectors are for generating the instructions
-    // using all combinations of them
-    std::vector<std::string> source_mem_instructions = generate_source_operand_instructions('m', opcode);
-
 
     switch (getValueFromBitsInit(As)) {
       case 0: // Register mode
@@ -205,13 +201,13 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
 
               // Indexed dest mode
               if (opcode.rfind("mov", 0) == 0) { // MOV
-                for (int i = 0; i < 2; i++) {
+                for (int i = 0; i < 3; i++) {
                   gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;"+ v[i] + "2(r5)","6 | 000000 | 010001 | 110001"));
                   gen_instr_class_pairs.push_back(std::make_pair(v[i] + "0xDFDE","6 | 000000 | 010001 | 110001"));
                   gen_instr_class_pairs.push_back(std::make_pair(v[i] + "&0x0406","6 | 000000 | 010001 | 110001"));
                 }
               } else {
-                for (int i = 0; i < 2; i++) {
+                for (int i = 0; i < 3; i++) {
                   gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;"+ v[i] + "2(r5)","6 | 000000 | 010101 | 110001"));
                   gen_instr_class_pairs.push_back(std::make_pair(v[i] + "0xDFDE","6 | 000000 | 010101 | 110001"));
                   gen_instr_class_pairs.push_back(std::make_pair(v[i] + "&0x0406","6 | 000000 | 010101 | 110001"));
@@ -276,14 +272,13 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
             if (instruction_name.back() == 'i') { // INS#mi, don't use constant generator
               if (opcode.rfind("mov", 0) == 0) { // MOV
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0045, 2(r5)","5 | 00000 | 00001 | 11001"));
-                // This instruction gave rise to an unexpected extra clock cycle
-                //gen_instr.push_back(opcode + " #0x0045, 0x0406");
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, 0xDFDE","5 | 00000 | 00001 | 11001"));
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, 0x0406;nop;" + opcode + " #0x0045, &0x0406","5 | 00000 | 00001 | 11001"));
               } else {
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0406, r5;nop;" + opcode + " #0x0045, 2(r5)","5 | 00000 | 00101 | 11001"));
                 gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0045, 0xDFDE","5 | 00000 | 00101 | 11001"));
                 gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0045, &0x0406","5 | 00000 | 00101 | 11001"));
+
               }
 
 
@@ -426,7 +421,7 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
     OS << "/* " << Num << "*/ "
        << "{"
        << "\"" << generated_instructions[0].first;
-    for (unsigned i = 1; i < generated_instructions.size() -1; i++){
+    for (unsigned i = 1; i < generated_instructions.size(); i++){
         OS  << " --- " << generated_instructions[i].first;
 
     }

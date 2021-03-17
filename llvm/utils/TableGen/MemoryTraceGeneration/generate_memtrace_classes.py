@@ -2,6 +2,7 @@
 
 import os
 import sys
+import re
 import binascii
 from mem_trace_classification import classify_instruction
 
@@ -233,41 +234,48 @@ with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTr
     all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
 
 print("len(all_instructions) = " + str(len(all_instructions)))
-instr_number = input("Number in .inc file: ")
+start_instr_number = input("Start number in .inc file: ")
+end_instr_number = input("End number in .inc file: ")
 range_start = 0
+range_end = 0
 i = 0
-while i < len(all_instructions) and not "/* " + instr_number + "*/" in all_instructions[i]:
-    range_start += 1
-    i += 1
-no_instructions_testing = int(input("Number of instructions to generate: "))
+while i < len(all_instructions) and range_end == 0:
+    if "/* " + start_instr_number + "*/" in all_instructions[i]:
+        range_start = i
+    if "/* " + end_instr_number + "*/" in all_instructions[i]:
+        range_end = i +1
+    i +=1
+
 print("The instructions that are about to be simulated")
-for i in range(range_start,range_start + no_instructions_testing):
+for i in range(range_start,range_end):
     if all_instructions[i] != "":
         print(all_instructions[i])
 
 found_classes = list()
 result_class = ""
 
-for i in range(range_start,range_start + no_instructions_testing):
+for i in range(range_start,range_end):
     all_instr = ""
     if all_instructions[i] != "":
-        all_instr = all_instructions[i].split('{')[1].split('}')[0].split(" , ")[0][1:-1].split(";")
-        addressing_modes = all_instructions[i][-2:]
-        print("Instruction simulated: " + str(all_instr))
-        res = generate_instruction(all_instr)
-        assembly_string = res[0]
-        result_class = res[1]
-        if result_class!= "" :
-            file_name = "Classes/" + result_class + ".txt"
-            if result_class in found_classes:
-                class_file = open(file_name, "a+")
-            else:
-                class_file = open(file_name, "w+")
-                found_classes.append(result_class)
+        this_line = re.sub('\"','',', '.join(all_instructions[i].split('{')[1].split('}')[0].split(", ")[0:-1])).split(' --- ')
+        for asm_code in this_line:
+            all_instr = asm_code.split(";")
+            addressing_modes = all_instructions[i][-2:]
+            print("Instruction simulated: " + str(all_instr))
+            res = generate_instruction(all_instr)
+            assembly_string = res[0]
+            result_class = res[1]
+            if result_class!= "" :
+                file_name = "Classes/" + result_class + ".txt"
+                if result_class in found_classes:
+                    class_file = open(file_name, "a+")
+                else:
+                    class_file = open(file_name, "w+")
+                    found_classes.append(result_class)
 
 
-            class_file.write(assembly_string + " || "+ addressing_modes +  "\r\n")
-            class_file.close()
-    os.system('echo \"--------------------------------------\"')
-    os.system('echo \"------- | '+ str(int((i-range_start+1)/(no_instructions_testing) *100)) +'% | -------\"')
-    os.system('echo \"--------------------------------------\"\n')
+                class_file.write(assembly_string + " || "+ addressing_modes +  "\r\n")
+                class_file.close()
+            os.system('echo \"--------------------------------------\"')
+            os.system('echo \"------- | '+ str(int((i-range_start+1)/(range_end-range_start) *100)) +'% | -------\"')
+            os.system('echo \"--------------------------------------\"\n')
