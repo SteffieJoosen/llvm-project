@@ -201,8 +201,7 @@ namespace {
         void CanonicalizeTerminatingInstructions(MachineBasicBlock *MBB);
         void AlignTwoWayBranch(MachineBasicBlock &MBB);
 
-        void CheckAccessedMemoryRegions(MachineBasicBlock *Entry, std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII, Register UnusedReg);
-        MachineBasicBlock *FindGuiltySuccesor(MachineBasicBlock *BB);
+        void CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII, Register UnusedReg);
 
         // Returns information about sensitivity of machine instructions and basic
         //  block info.
@@ -1050,13 +1049,6 @@ void MSP430DMADefenderPass::ReplaceSuccessor(
     ReAnalyzeControlFlow(*MBB);
 }
 
-static void BuildErrorInstr(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                            const TargetInstrInfo *TII) {
-    DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(42);
-}
-
 static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // MOV #0, R3
@@ -1156,59 +1148,24 @@ static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlo
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(461);
 }
 
-void MSP430DMADefenderPass::CheckAccessedMemoryRegions(MachineBasicBlock *Entry, std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII, Register UnusedReg) {
-    //! TODO: this number is just average, find out dynamically
+void MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
+                                                       const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    unsigned ENDOFDATAMEM = 0x0200 + (0x10000 - 0x0200)/2;
     for (MachineBasicBlock *BB : BBs) {
+        bool periphOrProgrMemoryAccessed = false;
         for (auto instr = BB->instr_begin(); instr != BB->instr_end(); ++instr){
-           if (instr->mayLoadOrStore()){
-
-                auto op = instr->memoperands().begin();
-                auto NewBB = CreateMachineBasicBlock("align",true);
-                // MOV #memop, RUnused -> works: tested with GTKWave
-                // CMP #0x0200, RUnused
-                // JMP RETBB
-               /*BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::JMP)).addMBB(Exit);
-               BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::CMP16rc),UnusedReg).addImm(0x0200);
-               BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::MOV16rc), UnusedReg).addMemOperand(*op);*/
-
-                auto JBB = CreateMachineBasicBlock("align", true);
-                auto RETBB = CreateMachineBasicBlock("align", true);
-
-                JBB->addSuccessor(BB);
-                // Update MBB accordingly
-                auto EInfo = GetInfo(*JBB);
-                ReplaceSuccessor(Entry, BB, JBB);
-                //RemoveTerminationCode(*Entry);
-                TII->insertBranch(*JBB, BB, RETBB, EInfo->BrCond, DL);
-               //BuildMI(*JBB, JBB->begin(), DL, TII->get(MSP430::JMP)).addMBB(BB);
-               BuildMI(*RETBB, RETBB->begin(), DL, TII->get(MSP430::RET));
-
-                // Update control flow analysis
-                ReAnalyzeControlFlow(*Entry);
-                AnalyzeControlFlow(*JBB);
-
-                auto JBBI = GetInfo(*JBB);
-                JBBI->Orig = CloneMBB(JBB, false); // TODO: Refactor the bookkeeping of
-                //        the original block contents
-                assert(JBB->succ_size() == 1);
-                assert(JBB->pred_size() == 1);
-           }
-
-        }
-    }
-}
-
-MachineBasicBlock *MSP430DMADefenderPass::FindGuiltySuccesor(MachineBasicBlock *BB) {
-    for (MachineBasicBlock *Succ : BB->successors()) {
-        for (auto instr = Succ->instr_begin(); instr != Succ->instr_end(); ++instr) {
-            if (instr->mayLoadOrStore()) {
-                return Succ;
+            for (auto op : instr->memoperands()) {
+                if ((op->getValue()->getType()->getTypeID() == Type::PointerTyID&& !(op->getValue()->getValueID() == Value::GlobalVariableVal))
+                ||op->getValue()->getValueID() == Value::ConstantExprVal) {
+                    periphOrProgrMemoryAccessed = true;
+                }
             }
         }
+        if (periphOrProgrMemoryAccessed) {
+            BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::RET));
+        }
+
     }
-    return nullptr;
 }
 
 
@@ -1756,7 +1713,9 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
             assert(! BBI->IsAligned);
             BBI->IsAligned = true;
         }
+        DebugLoc DL;
         MII[MBB] = MBB->begin();
+        BuildMI(*MBB, MBB->begin(), DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
         MTI[MBB] = MBB->getFirstTerminator();
     }
 
@@ -2376,7 +2335,7 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock &MBB,
                                                 MachineBasicBlock::iterator I,
                                                 Register UnusedReg) {
-    auto Latency = TII->getInstrLatency(nullptr, MI);
+
     auto instr_class = TII->getInstrMemTraceClass(nullptr, MI);
     if (MI.isAnnotationLabel())
         return;
@@ -2384,23 +2343,56 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
     // TODO: This code is MSP430-specific. It must be target-independent and
     //        should probably be described in the target description files.
     // TODO: What about non-deterministic Sancus crypto instructions?
+    DebugLoc DL;
     switch (instr_class) {
-        case 10: Build_1_0_0_1(MBB, I, TII, UnusedReg); break;
-        case 20: Build_2_00_00_11(MBB, I, TII, UnusedReg); break; //MOV
-        case 21: Build_2_00_10_01(MBB, I, TII, UnusedReg); break;
-        case 30: Build_3_000_010_101(MBB, I, TII, UnusedReg); break; //CMP
-        case 31: Build_3_000_101_001(MBB, I, TII, UnusedReg); break;
-        case 32: Build_3_000_001_001(MBB, I, TII, UnusedReg); break;
-        case 33: Build_3_000_100_000(MBB, I, TII, UnusedReg); break;
-        case 40: Build_4_0000_0101_1001(MBB, I, TII, UnusedReg); break;
-        case 41: Build_4_0000_0001_1001(MBB, I, TII, UnusedReg); break;
-        case 50: Build_5_00000_00101_11001(MBB, I, TII, UnusedReg); break;
-        case 51: Build_5_00000_10101_10001(MBB, I, TII, UnusedReg); break;
-        case 52: Build_5_00000_00001_11001(MBB, I, TII, UnusedReg); break;
-        case 53: Build_5_00000_10001_10001(MBB, I, TII, UnusedReg); break;
-        case 54: Build_5_00000_10000_00000(MBB, I, TII, UnusedReg); break;
-        case 60: Build_6_000000_010101_110001(MBB, I, TII, UnusedReg); break;
-        case 61: Build_6_000000_010001_110001(MBB, I, TII, UnusedReg); break;
+        case 10:
+            Build_1_0_0_1(MBB, I, TII, UnusedReg);
+            break;
+        case 20:
+            Build_2_00_00_11(MBB, I, TII, UnusedReg);
+            break; //MOV
+        case 21:
+            Build_2_00_10_01(MBB, I, TII, UnusedReg);
+            break;
+        case 30:
+            Build_3_000_010_101(MBB, I, TII, UnusedReg);
+            break; //CMP
+        case 31:
+            Build_3_000_101_001(MBB, I, TII, UnusedReg);
+            break;
+        case 32:
+            Build_3_000_001_001(MBB, I, TII, UnusedReg);
+            break;
+        case 33:
+            Build_3_000_100_000(MBB, I, TII, UnusedReg);
+            break;
+        case 40:
+            Build_4_0000_0101_1001(MBB, I, TII, UnusedReg);
+            break;
+        case 41:
+            Build_4_0000_0001_1001(MBB, I, TII, UnusedReg);
+            break;
+        case 50:
+            Build_5_00000_00101_11001(MBB, I, TII, UnusedReg);
+            break;
+        case 51:
+            Build_5_00000_10101_10001(MBB, I, TII, UnusedReg);
+            break;
+        case 52:
+            Build_5_00000_00001_11001(MBB, I, TII, UnusedReg);
+            break;
+        case 53:
+            Build_5_00000_10001_10001(MBB, I, TII, UnusedReg);
+            break;
+        case 54:
+            Build_5_00000_10000_00000(MBB, I, TII, UnusedReg);
+            break;
+        case 60:
+            Build_6_000000_010101_110001(MBB, I, TII, UnusedReg);
+            break;
+        case 61:
+            Build_6_000000_010001_110001(MBB, I, TII, UnusedReg);
+            break;
         default:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
             MI.dump();
@@ -3205,7 +3197,6 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
     Successors Succs;
     Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
     Register UnusedReg = FindUnusedRegisters(Succs.Succs);
-    //CheckAccessedMemoryRegions(Succs.Succs, TII, UnusedReg);
 
 
 
@@ -3473,10 +3464,9 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
             //! TODO: Make this a set of unused registers and delete UnusedReg. The remaining regs can be used in
             //! CheckAccessedMemoryRegions()
             Register UnusedReg = FindUnusedRegisters(Succs.Succs);
-            CheckAccessedMemoryRegions(BBI.BB,Succs.Succs, TII, UnusedReg);
-            //BuildMI(*BBI.BB, --BBI.BB->end(), BBI.BB->findDebugLoc(BBI.BB->instr_end()), TII->get(MSP430::JMP)).addMBB(NewBB);
-            // MOV #0x0402, RUnused
+            CheckAccessedMemoryRegions(Succs.Succs, TII, UnusedReg);
 
+            // MOV #0x0402, RUnused
             BuildMI(*(BBI.BB), --BBI.BB->end(), BBI.BB->findDebugLoc(BBI.BB->end()),
                     TII->get(MSP430::MOV16rc), UnusedReg).addImm(0x0402);
             AlignSensitiveBranch(BBI);
