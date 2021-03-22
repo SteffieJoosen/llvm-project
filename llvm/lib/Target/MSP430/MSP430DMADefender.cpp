@@ -1051,8 +1051,11 @@ void MSP430DMADefenderPass::ReplaceSuccessor(
 
 static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV #0, R3
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(0);
+    // MOV #0, R3 gave rise to a NOP inserted, which is allright, but might
+    // lead to confusion on how the program is patched (NOPs almost never suffice)
+
+    // MOV #8, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
 }
 static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
@@ -1097,12 +1100,13 @@ static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::it
     BuildMI(MBB, I, DL, TII->get(MSP430::RRA16m), UnusedReg).addImm(2);
 }
 
+
 static void Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     //! TODO: what to do about a PUSH?
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(441);
+    // MOV #0, 2(RUnused)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(0);
 }
-
 static void Build_5_00000_00101_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // ADD #42, 2(RUnused)
@@ -1715,7 +1719,6 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
         }
         DebugLoc DL;
         MII[MBB] = MBB->begin();
-        BuildMI(*MBB, MBB->begin(), DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
         MTI[MBB] = MBB->getFirstTerminator();
     }
 
@@ -2343,7 +2346,8 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
     // TODO: This code is MSP430-specific. It must be target-independent and
     //        should probably be described in the target description files.
     // TODO: What about non-deterministic Sancus crypto instructions?
-    DebugLoc DL;
+    /*DebugLoc DL;
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(2);*/
     switch (instr_class) {
         case 10:
             Build_1_0_0_1(MBB, I, TII, UnusedReg);
