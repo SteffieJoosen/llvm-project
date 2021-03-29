@@ -77,7 +77,7 @@ public:
   unsigned getInstrLatency(const InstrItineraryData *ItinData,
                            const MachineInstr &MI,
                            unsigned *PredCost = nullptr) const override;
-  signed int getInstrMemTraceClass(const InstrItineraryData *ItinData,
+  unsigned int getInstrMemTraceClass(const InstrItineraryData *ItinData,
                              const MachineInstr &MI,
                              unsigned *PredCost = nullptr) const override;
 

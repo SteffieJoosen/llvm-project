@@ -341,7 +341,7 @@ unsigned MSP430InstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
 
   return L;
 }
-signed int MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *ItinData, const MachineInstr &MI,
+unsigned int MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *ItinData, const MachineInstr &MI,
                                                   unsigned int *PredCost) const {
     StringRef instr_class = "no class";
     auto &instr = MSP430::Instruction_classes[MI.getDesc().getOpcode()];

@@ -1155,18 +1155,23 @@ static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlo
 void MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
                                                        const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
+    long addrValue;
     for (MachineBasicBlock *BB : BBs) {
         bool periphOrProgrMemoryAccessed = false;
         for (auto instr = BB->instr_begin(); instr != BB->instr_end(); ++instr){
             for (auto op : instr->memoperands()) {
-                if ((op->getValue()->getType()->getTypeID() == Type::PointerTyID&& !(op->getValue()->getValueID() == Value::GlobalVariableVal))
-                ||op->getValue()->getValueID() == Value::ConstantExprVal) {
+                if (op->getValue()->getType()->getTypeID() ==  Type::PointerTyID && !(op->getValue()->getValueID() == Value::GlobalVariableVal)){
+                    addrValue = op->getPointerInfo().Offset;
+                    periphOrProgrMemoryAccessed = true;
+                }
+                if (op->getValue()->getValueID() == Value::ConstantExprVal) {
                     periphOrProgrMemoryAccessed = true;
                 }
             }
         }
         if (periphOrProgrMemoryAccessed) {
-            BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::RET));
+            BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(addrValue);
+            //BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::RET));
         }
 
     }
@@ -3471,7 +3476,9 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
             CheckAccessedMemoryRegions(Succs.Succs, TII, UnusedReg);
 
             // MOV #0x0402, RUnused
-            BuildMI(*(BBI.BB), --BBI.BB->end(), BBI.BB->findDebugLoc(BBI.BB->end()),
+            auto I = BBI.BB->begin();
+            for ( ; I != --BBI.BB->end(); ++I) {}
+            BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                     TII->get(MSP430::MOV16rc), UnusedReg).addImm(0x0402);
             AlignSensitiveBranch(BBI);
         }

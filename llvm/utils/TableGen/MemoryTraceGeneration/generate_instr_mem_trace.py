@@ -123,10 +123,12 @@ def create_c_file(instr):
     f.write("__asm__ __volatile__(\r\n")
     for asm in instr:
         f.write("    \"" + asm + "\\n\\t\"\r\n")
+
     # This is for analyzing program memory
-    #f.write("\"pin:\"\r\n")
-    #f.write("\"    .short 0        ; 0x0\"\r\n")
-    #f.write("\"    .size pin, 2\"\r\n")
+    f.write("\"pin:\"\r\n")
+    f.write("\"    .short 0        ; 0x0\"\r\n")
+    f.write("\"    .size pin, 2\"\r\n")
+
     f.write(");\r\n")
     f.write("\r\n")
     f.write("}\r\n")
