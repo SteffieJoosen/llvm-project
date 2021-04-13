@@ -78,7 +78,7 @@ public:
                            const MachineInstr &MI,
                            unsigned *PredCost = nullptr) const override;
   unsigned int getInstrMemTraceClass(const InstrItineraryData *ItinData,
-                             const MachineInstr &MI,
+                             const MachineInstr &MI, StringRef AccessedMemregions,
                              unsigned *PredCost = nullptr) const override;
 
   void insertNoop(MachineBasicBlock &MBB,

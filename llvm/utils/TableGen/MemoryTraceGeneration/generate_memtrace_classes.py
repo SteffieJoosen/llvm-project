@@ -228,39 +228,63 @@ if os.path.isdir("/home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTraceGener
 
 os.system("mkdir Classes")
 
+mem_region = input("The combination of memory regions to be accessed: ")
+
 # Read instruction to generate memory tace for
 # This assumes the sllvm github repository is cloned into your home directory
-with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc') as f:
-    all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
+inc_file = open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc')
+found_table = False
+all_instructions = []
+for pos, line in enumerate(inc_file):
+    if "Instruction_classes_progr_data" in line:
+        if mem_region == "pd":
+            found_table = True
+        elif mem_region == "dd":
+            found_table = False
+    if "Instruction_classes_data_data" in line:
+        if mem_region == "pd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = True
+    if found_table:
+        if "{" in line and "}," in line and not "nothing yet" in line:
+            all_instructions.append(line)
+
+#with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc') as f:
+#    all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
+
+
 
 print("len(all_instructions) = " + str(len(all_instructions)))
 start_instr_number = input("Start number in .inc file: ")
 end_instr_number = input("End number in .inc file: ")
-range_start = 0
-range_end = 0
 i = 0
-while i < len(all_instructions) and range_end == 0:
-    if "/* " + start_instr_number + "*/" in all_instructions[i]:
-        range_start = i
-    if "/* " + end_instr_number + "*/" in all_instructions[i]:
-        range_end = i +1
-    i +=1
+simulated_instr = []
+add_instr = False
+for line in all_instructions:
+    if "/* " + start_instr_number + "*/" in line:
+        add_instr = True
+    if add_instr:
+        simulated_instr.append(line)
+    if "/* " + end_instr_number + "*/" in line:
+        add_instr = False
 
 print("The instructions that are about to be simulated")
-for i in range(range_start,range_end):
-    if all_instructions[i] != "":
-        print(all_instructions[i])
+for i in simulated_instr:
+    print(i)
 
 found_classes = list()
 result_class = ""
 
-for i in range(range_start,range_end):
+total = len(simulated_instr)
+done = 1
+for ins in simulated_instr:
     all_instr = ""
-    if all_instructions[i] != "":
-        this_line = re.sub('\"','',', '.join(all_instructions[i].split('{')[1].split('}')[0].split(", ")[0:-1])).split(' --- ')
+    if ins != "":
+        this_line = re.sub('\"', '', ', '.join(ins.split('{')[1].split('}')[0].split(", ")[0:-1])).split(' --- ')
         for asm_code in this_line:
             all_instr = asm_code.split(";")
-            addressing_modes = all_instructions[i][-2:]
+            addressing_modes = ins[-2:]
             print("Instruction simulated: " + str(all_instr))
             res = generate_instruction(all_instr)
             assembly_string = res[0]
@@ -276,6 +300,8 @@ for i in range(range_start,range_end):
 
                 class_file.write(assembly_string + " || "+ addressing_modes +  "\r\n")
                 class_file.close()
+
             os.system('echo \"--------------------------------------\"')
-            os.system('echo \"------- | '+ str(int((i-range_start+1)/(range_end-range_start) *100)) +'% | -------\"')
+            os.system('echo \"------- | '+ str(int(done/total *100)) +'% | -------\"')
             os.system('echo \"--------------------------------------\"\n')
+    done += 1

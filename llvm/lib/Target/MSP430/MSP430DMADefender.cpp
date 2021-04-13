@@ -196,12 +196,12 @@ namespace {
         Successors
         ComputeSuccessors(std::vector<MachineBasicBlock *> L, MachineBasicBlock *Exit);
 
-        Register FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs);
-        void AlignNonTerminatingInstructions(std::vector<MachineBasicBlock *> L, Register UnusedReg);
+        std::vector<Register> FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs);
+        void AlignNonTerminatingInstructions(std::vector<MachineBasicBlock *> L, Register RData, Register RProgram);
         void CanonicalizeTerminatingInstructions(MachineBasicBlock *MBB);
         void AlignTwoWayBranch(MachineBasicBlock &MBB);
 
-        void CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII, Register UnusedReg);
+        void CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII);
 
         // Returns information about sensitivity of machine instructions and basic
         //  block info.
@@ -223,7 +223,7 @@ namespace {
         void RegisterDefs(MBBInfo &BBI);
 
         void CompensateInstr(const MachineInstr &MI, MachineBasicBlock &MBB,
-                             MachineBasicBlock::iterator MBBI, Register UnusedReg);
+                             MachineBasicBlock::iterator MBBI, Register RData, Register RProgram);
         void CompensateCall(const MachineInstr &Call, MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator MBBI);
         void SecureCall(MachineInstr &Call);
@@ -277,7 +277,7 @@ namespace {
         void SecureCalls();
         void AlignSensitiveBranches();
 
-        void AlignSensitiveBranch(MBBInfo &BBI);
+        void AlignSensitiveBranch(MBBInfo &BBI, Register RData, Register RProgram);
         std::vector<MachineBasicBlock *>
         AlignSensitiveLoop(MachineLoop *Loop, std::vector<MachineBasicBlock *> MBBs);
         std::vector<MachineBasicBlock *>
@@ -1055,7 +1055,7 @@ static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     // lead to confusion on how the program is patched (NOPs almost never suffice)
 
     // MOV #8, R3
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MPS430::CG).addImm(8);
 }
 static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
@@ -1063,21 +1063,22 @@ static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(420);
 }
 
+
 static void Build_2_00_10_01(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV @RUnused, R3
+    // MOV @RData, R3
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(UnusedReg);
 }
 
 static void Build_3_000_010_101(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV 2(RUnused), R3
+    // MOV 2(RData), R3
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rm), MSP430::CG).addReg(UnusedReg).addImm(2);
 }
 
 static void Build_3_000_101_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // SWPB @RUnused
+    // SWPB @RData
     BuildMI(MBB, I, DL, TII->get(MSP430::SWPB16n)).addReg(UnusedReg);
 }
 
@@ -1092,11 +1093,16 @@ static void Build_3_000_100_000(MachineBasicBlock &MBB, MachineBasicBlock::itera
     //! TODO: what to do about a RET?
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(433);
 }
+static void Build_3_000_000_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+    DebugLoc DL;
+    //! TODO: what to do about a BR?
+    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(434);
+}
 
 static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // indirect benchmark program
-    // RRA 2(RUnused)
+    // RRA 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::RRA16m), UnusedReg).addImm(2);
 }
 
@@ -1104,30 +1110,30 @@ static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::it
 static void Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     //! TODO: what to do about a PUSH?
-    // MOV #0, 2(RUnused)
+    // MOV #0, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(0);
 }
 static void Build_5_00000_00101_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // ADD #42, 2(RUnused)
+    // ADD #42, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), UnusedReg).addImm(2).addImm(42);
 }
 
 static void Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // ADD @RUnused, 2(RUnused)
+    // ADD @RUnused, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mn), UnusedReg).addImm(2).addReg(UnusedReg);
 }
 
 static void Build_5_00000_00001_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV #42, 2(RUnused)
+    // MOV #42, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mi), UnusedReg).addImm(2).addImm(42);
 }
 
 static void Build_5_00000_10001_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV @RUnused, 2(RUnused)
+    // MOV @RData, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mn), UnusedReg).addImm(2).addReg(UnusedReg);
 }
 
@@ -1139,8 +1145,8 @@ static void Build_5_00000_10000_00000(MachineBasicBlock &MBB, MachineBasicBlock:
 
 static void Build_6_000000_010101_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // ADD 2(RUnused), 2(R3)
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), UnusedReg)
+    // ADD 2(RData), 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mm), UnusedReg)
             .addImm(2)
             .addReg(UnusedReg)
             .addImm(2);
@@ -1148,12 +1154,16 @@ static void Build_6_000000_010101_110001(MachineBasicBlock &MBB, MachineBasicBlo
 
 static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    //! TODO: this is just a dummy, replace it with a better error (used for testing)
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(461);
+    // MOV 2(RData), 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), UnusedReg)
+            .addImm(2)
+            .addReg(UnusedReg)
+            .addImm(2);
 }
 
+
 void MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
-                                                       const TargetInstrInfo *TII, Register UnusedReg) {
+                                                       const TargetInstrInfo *TII) {
     DebugLoc DL;
     long addrValue;
     for (MachineBasicBlock *BB : BBs) {
@@ -1168,10 +1178,6 @@ void MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicB
                     periphOrProgrMemoryAccessed = true;
                 }
             }
-        }
-        if (periphOrProgrMemoryAccessed) {
-            BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(addrValue);
-            //BuildMI(*BB, BB->begin(), DL, TII->get(MSP430::RET));
         }
 
     }
@@ -1699,7 +1705,7 @@ static void DumpMF(MachineFunction &MF) {
 #endif
 
 void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
-        std::vector<MachineBasicBlock *> L, Register UnusedReg) {
+        std::vector<MachineBasicBlock *> L, Register RData, Register RProgram) {
     assert(L.size() > 1);
     // Create two maps, mapping MBBs to
     //   1) instruction iterator (pointing to the beginning of the MBB)
@@ -1769,17 +1775,17 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                         LLVM_DEBUG(dbgs() << "  " << GetName(BB) << ": ");
                         if (MII[BB] == BB->end()) {
                             LLVM_DEBUG(dbgs() << "insert nop (end-of-block)");
-                            CompensateInstr(RI, *BB, MII[BB],UnusedReg);
+                            CompensateInstr(RI, *BB, MII[BB],RData, RProgram);
                         } else if (MII[BB] == MTI[BB]) {
                             LLVM_DEBUG(dbgs() << "insert nop (begin-of-branching-code)");
-                            CompensateInstr(RI, *BB, MII[BB], UnusedReg);
+                            CompensateInstr(RI, *BB, MII[BB], RData, RProgram);
                         } else {
                             auto &MI = *MII[BB];
                             auto MIL = TII->getInstrLatency(nullptr, MI);
                             LLVM_DEBUG(dbgs() << MI << " (latency=" << MIL << "): ");
                             if (RIL != MIL) {
                                 LLVM_DEBUG(dbgs() << "insert nop (non-matching-latency)");
-                                CompensateInstr(RI, *BB, MII[BB], UnusedReg);
+                                CompensateInstr(RI, *BB, MII[BB], RData, RProgram);
                             } else {
                                 LLVM_DEBUG(dbgs() << "latencies match");
                                 MII[BB]++;
@@ -2342,65 +2348,128 @@ void MSP430DMADefenderPass::ClassifyBranches() {
 void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock &MBB,
                                                 MachineBasicBlock::iterator I,
-                                                Register UnusedReg) {
+                                                Register RData, Register RProgram) {
+    char accessed_memregions [2] = {'*', '*'};
+    auto instr_class = 0;
+    unsigned int num_oper = MI.getNumOperands();
+    unsigned  int num_memoper = MI.getNumMemOperands();
+    int data_memory = -1;
+    int program_memory = -1;
+    int mem_operand = 0;
+    for (auto op : MI.memoperands()) {
+        if (op->getValue()->getValueID() == Value::GlobalVariableVal){
+            data_memory = mem_operand;
+        }
+        if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal||
+                op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
+                op->getValue()->getValueID() == Value::ConstantFirstVal ||
+                op->getValue()->getValueID() == Value::ConstantLastVal ||
+                op->getValue()->getValueID() == Value::ConstantDataFirstVal ||
+                op->getValue()->getValueID() == Value::ConstantDataLastVal ||
+                op->getValue()->getValueID() == Value::ConstantExprVal ||
+                op->getValue()->getValueID() == Value::ConstantVectorVal ||
+                op->getValue()->getValueID() == Value::ConstantTokenNoneVal ||
+                op->getValue()->getValueID() == Value::ConstantStructVal ||
+                op->getValue()->getValueID() == Value::ConstantPointerNullVal ||
+                op->getValue()->getValueID() == Value::ConstantFPVal ||
+                op->getValue()->getValueID() == Value::ConstantDataVectorVal ||
+                op->getValue()->getValueID() == Value::ConstantDataArrayVal ||
+                op->getValue()->getValueID() == Value::ConstantIntVal||
+                op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
+                op->getValue()->getValueID() == Value::ConstantArrayVal) {
+            program_memory = mem_operand;
+        }
+        mem_operand++;
+    }
+    DebugLoc DL;
+    switch (num_memoper) {
+        case 0:
+            if (MI.getOperand(num_oper-2).isReg()) {
+                if (MI.getOperand(num_oper - 1).isReg()) {
+                    // INS r., r.
+                    instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                } else if (MI.getOperand(num_oper-1).isImm() || MI.getOperand(num_oper-1).isCImm() || MI.getOperand(num_oper-1).isFPImm()) {
+                    // INS #const, r.
+                    instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
+                }
+            }
+            break;
+        case 1:
+            if (program_memory >= 0) {
+                instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
+            } else {
+                instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+            }
+            break;
+    }
 
-    auto instr_class = TII->getInstrMemTraceClass(nullptr, MI);
+    //! TODO: pointers pointing to program memory?
+
+
     if (MI.isAnnotationLabel())
         return;
 
     // TODO: This code is MSP430-specific. It must be target-independent and
     //        should probably be described in the target description files.
     // TODO: What about non-deterministic Sancus crypto instructions?
-    /*DebugLoc DL;
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(2);*/
+
     switch (instr_class) {
         case 10:
-            Build_1_0_0_1(MBB, I, TII, UnusedReg);
+            Build_1_0_0_1(MBB, I, TII, RData);
             break;
         case 20:
-            Build_2_00_00_11(MBB, I, TII, UnusedReg);
-            break; //MOV
+            Build_2_00_00_11(MBB, I, TII, RData);
+            break;
         case 21:
-            Build_2_00_10_01(MBB, I, TII, UnusedReg);
+            Build_2_00_10_01(MBB, I, TII, RData);
             break;
         case 30:
-            Build_3_000_010_101(MBB, I, TII, UnusedReg);
-            break; //CMP
+            Build_3_000_010_101(MBB, I, TII, RData);
+            break;
         case 31:
-            Build_3_000_101_001(MBB, I, TII, UnusedReg);
+            Build_3_000_101_001(MBB, I, TII, RData);
             break;
         case 32:
-            Build_3_000_001_001(MBB, I, TII, UnusedReg);
+            Build_3_000_001_001(MBB, I, TII, RData);
             break;
         case 33:
-            Build_3_000_100_000(MBB, I, TII, UnusedReg);
+            Build_3_000_100_000(MBB, I, TII, RData);
+            break;
+        case 34:
+            Build_3_000_000_001(MBB, I, TII, RData);
             break;
         case 40:
-            Build_4_0000_0101_1001(MBB, I, TII, UnusedReg);
+            Build_4_0000_0101_1001(MBB, I, TII, RData);
             break;
         case 41:
-            Build_4_0000_0001_1001(MBB, I, TII, UnusedReg);
+            Build_4_0000_0001_1001(MBB, I, TII, RData);
             break;
         case 50:
-            Build_5_00000_00101_11001(MBB, I, TII, UnusedReg);
+            Build_5_00000_00101_11001(MBB, I, TII, RData);
             break;
         case 51:
-            Build_5_00000_10101_10001(MBB, I, TII, UnusedReg);
+            Build_5_00000_10101_10001(MBB, I, TII, RData);
             break;
         case 52:
-            Build_5_00000_00001_11001(MBB, I, TII, UnusedReg);
+            Build_5_00000_00001_11001(MBB, I, TII, RData);
             break;
         case 53:
-            Build_5_00000_10001_10001(MBB, I, TII, UnusedReg);
+            Build_5_00000_10001_10001(MBB, I, TII, RData);
             break;
         case 54:
-            Build_5_00000_10000_00000(MBB, I, TII, UnusedReg);
+            Build_5_00000_10000_00000(MBB, I, TII, RData);
             break;
         case 60:
-            Build_6_000000_010101_110001(MBB, I, TII, UnusedReg);
+            Build_6_000000_010101_110001(MBB, I, TII, RData);
             break;
         case 61:
-            Build_6_000000_010001_110001(MBB, I, TII, UnusedReg);
+            Build_6_000000_010001_110001(MBB, I, TII, RData);
+            break;
+        case 660:
+            Build_6_000000_000101_111001(MBB, I, TII, RProgram);
+            break;
+        case 661:
+            Build_6_000000_000001_111001(MBB, I, TII, RProgram);
             break;
         default:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
@@ -2409,6 +2478,7 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
             llvm_unreachable("Unexpected memory trace class");
     }
 }
+
 
 #define PREFIX_NEMDEF_SECURE "_nds_"
 #define PREFIX_NEMDEF_DUMMY  "_ndd_"
@@ -2750,7 +2820,28 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
             if (L == Loop) {
                 if (IsSecretDependent(&BBI)) {
                     // Deal with this "directly contained" sensitive branch
-                    AlignSensitiveBranch(BBI); // Recursive call (indirect)
+                    auto ExitOfSR = GetExitOfSensitiveBranch(BBI.BB);
+                    Successors Succs;
+                    Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
+                    std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
+                    CheckAccessedMemoryRegions(Succs.Succs, TII);
+
+                    assert(UnusedRegs.size() >= 3);
+                    if (UnusedRegs.size() >= 3) {
+                        // MOV #0x0402, RData
+                        // MOV #0xFFDC, RProgram
+                        auto I = BBI.BB->begin();
+                        for (; I != --BBI.BB->end(); ++I) {}
+                        // MOV #0xFFDC, RProgram
+                        BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                                TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
+                        // MOV #0x0402, RData
+                        BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                                TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
+                        AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1]); // Recursive call (indirect)
+                    } else {
+                        llvm_unreachable("Cannot find three unused registers to make dummies with");
+                    }
                 }
             } else if (L->getParentLoop() == Loop) {
                 // Deal with this "directly contained" loop
@@ -3096,8 +3187,9 @@ void MSP430DMADefenderPass::RedoAnalysisPasses() {
 // This function checks whether any general purpose register is used in the given BasicBlocks
 // of some sensitive region.
 // It returns the first register that is found not to be used in the given BB, starting from R4.
-Register MSP430DMADefenderPass::FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs) {
+std::vector<Register> MSP430DMADefenderPass::FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs) {
     bool used[12] = {false, false, false, false, false, false, false, false, false, false, false, false};
+    std::vector<Register> regs;
     for (MachineBasicBlock *BB : BBs){
         for (auto it = BB->instr_begin(); it != BB->instr_end(); ++ it ) {
             std::pair<bool,bool> testR4 = (*it).readsWritesVirtualRegister(MSP430::R4);
@@ -3113,52 +3205,33 @@ Register MSP430DMADefenderPass::FindUnusedRegisters(std::vector<MachineBasicBloc
             std::pair<bool,bool> testR14 = (*it).readsWritesVirtualRegister(MSP430::R14);
             std::pair<bool,bool> testR15 = (*it).readsWritesVirtualRegister(MSP430::R15);
             if (testR4.first || testR4.second) {
-                used[0] = true;
+                regs.push_back(MSP430::R4);
             } else if (testR5.first || testR5.second) {
-                used[1] = true;
+                regs.push_back(MSP430::R5);
             } else if (testR6.first || testR6.second) {
-                used[2] = true;
+                regs.push_back(MSP430::R6);
             } else if (testR7.first || testR7.second) {
-                used[3] = true;
+                regs.push_back(MSP430::R7);
             } else if (testR8.first || testR8.second) {
-                used[4] = true;
+                regs.push_back(MSP430::R8);
             } else if (testR9.first || testR9.second) {
-                used[5] = true;
+                regs.push_back(MSP430::R9);
             } else if (testR10.first || testR10.second) {
-                used[6] = true;
+                regs.push_back(MSP430::R10);
             } else if (testR11.first || testR11.second) {
-                used[7] = true;
+                regs.push_back(MSP430::R11);
             } else if (testR12.first || testR12.second) {
-                used[8] = true;
+                regs.push_back(MSP430::R12);
             } else if (testR13.first || testR13.second) {
-                used[9] = true;
+                regs.push_back(MSP430::R13);
             } else if (testR14.first || testR14.second) {
-                used[10] = true;
+                regs.push_back(MSP430::R14);
             } else if (testR15.first || testR15.second) {
-                used[11] = true;
+                regs.push_back(MSP430::R15);
             }
         }
-        /*int reg = 0;
-        for(int i = 11; i >= 0;  i--) {
-            if (used[i] == false) { reg = i; }
-        }*/
     }
-
-    auto iter = std::find(used, used + 12, false);
-    switch (std::distance(used,iter)) {
-        case 0: return MSP430::R4;
-        case 1: return MSP430::R5;
-        case 2: return MSP430::R6;
-        case 3: return MSP430::R7;
-        case 4: return MSP430::R8;
-        case 5: return MSP430::R9;
-        case 6: return MSP430::R10;
-        case 7: return MSP430::R11;
-        case 8: return MSP430::R12;
-        case 9: return MSP430::R13;
-        case 10: return MSP430::R14;
-        case 11: return MSP430::R15;
-    }
+    return regs;
 }
 
 // Aligns the sensitive branch that starts with BBI.BB
@@ -3173,7 +3246,7 @@ Register MSP430DMADefenderPass::FindUnusedRegisters(std::vector<MachineBasicBloc
 // Consequently, GetFingerprint() will return the correct fingerprint.
 //
 // Remark: Recomputes analysis passes
-void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
+void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, Register RProgram) {
 #if 0
     switch (BBI.BClass) {
     case BCFork:
@@ -3205,7 +3278,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
     // 1) Align non-terminating instructions
     Successors Succs;
     Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
-    Register UnusedReg = FindUnusedRegisters(Succs.Succs);
+    //std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
 
 
 
@@ -3220,10 +3293,10 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
         // TODO: Make sure this loop terminates
         if (Succs.Loop == nullptr) {
             assert(Succs.Succs.size() > 1);
-            AlignNonTerminatingInstructions(Succs.Succs, UnusedReg);
+            AlignNonTerminatingInstructions(Succs.Succs, UnusedRegs);
             std::copy(Succs.Succs.begin(), Succs.Succs.end(), std::back_inserter(MBBs));
             Succs = ComputeSuccessors(Succs.Succs, ExitOfSR);
-            UnusedReg = FindUnusedRegisters(Succs.Succs);
+            UnusedRegs = FindUnusedRegisters(Succs.Succs);
         }
         else {
             // A loop has been detected by ComputeSuccessors, deal with it first
@@ -3245,7 +3318,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI) {
 #endif
 
             Succs = ComputeSuccessors(S, ExitOfSR);
-            Register UnusedReg = FindUnusedRegisters(Succs.Succs);
+            std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
         }
     }
 
@@ -3472,15 +3545,27 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
             Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
             //! TODO: Make this a set of unused registers and delete UnusedReg. The remaining regs can be used in
             //! CheckAccessedMemoryRegions()
-            Register UnusedReg = FindUnusedRegisters(Succs.Succs);
-            CheckAccessedMemoryRegions(Succs.Succs, TII, UnusedReg);
+            std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
+            CheckAccessedMemoryRegions(Succs.Succs, TII);
 
-            // MOV #0x0402, RUnused
-            auto I = BBI.BB->begin();
-            for ( ; I != --BBI.BB->end(); ++I) {}
-            BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
-                    TII->get(MSP430::MOV16rc), UnusedReg).addImm(0x0402);
-            AlignSensitiveBranch(BBI);
+            assert(UnusedRegs.size() >= 3);
+            if (UnusedRegs.size() >= 3) {
+                // MOV #0x0402, RData
+                // MOV #0xFFDC, RProgram
+                auto I = BBI.BB->begin();
+                for ( ; I != --BBI.BB->end(); ++I) {}
+                // MOV #0xFFDC, RProgram
+                BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                        TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
+                // MOV #0x0402, RData
+                BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                        TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
+
+                AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1]);
+            } else {
+                llvm_unreachable("Cannot find three unused registers to make dummies with");
+            }
+
         }
     }
 }

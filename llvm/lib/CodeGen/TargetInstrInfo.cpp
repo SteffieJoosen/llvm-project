@@ -1162,7 +1162,7 @@ unsigned TargetInstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   return ItinData->getStageLatency(MI.getDesc().getSchedClass());
 }
 
-unsigned int TargetInstrInfo::getInstrMemTraceClass(const InstrItineraryData *ItinData, const MachineInstr &MI,
+unsigned int TargetInstrInfo::getInstrMemTraceClass(const InstrItineraryData *ItinData, const MachineInstr &MI, StringRef AccessedMemregions,
                                                  unsigned int *PredCost) const {
     return -1;
 }

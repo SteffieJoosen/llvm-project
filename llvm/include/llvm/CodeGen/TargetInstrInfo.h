@@ -1546,7 +1546,7 @@ public:
                                    const MachineInstr &MI,
                                    unsigned *PredCost = nullptr) const;
   virtual unsigned int getInstrMemTraceClass(const InstrItineraryData *ItinData,
-                                          const MachineInstr &MI,
+                                          const MachineInstr &MI, StringRef AccessedMemregions,
                                           unsigned *PredCost = nullptr) const;
 
   virtual unsigned getPredicationCost(const MachineInstr &MI) const;
