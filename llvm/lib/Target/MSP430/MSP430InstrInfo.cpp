@@ -355,7 +355,7 @@ unsigned int MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *It
             return 21;
         }  else if (instr_class.str().compare("3 | 000 | 010 | 101") == 0) {
             return 30;
-        } else if (instr_class.str().compare("3 | 000 | 101 | 001") == 0) {
+        } else if (instr_class.str().compare("3 | 000 | 101 | 001") == 0) { // data mem
             return 31;
         } else if (instr_class.str().compare("3 | 000 | 001 | 001") == 0) {
             return 32;
@@ -363,6 +363,8 @@ unsigned int MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *It
             return 33;
         } else if (instr_class.str().compare("3 | 000 | 000 | 001") == 0) { // BR
             return 34;
+        } else if (instr_class.str().compare("3 | 000 | 000 | 111") == 0) { // program mem
+            return 35;
         } else if (instr_class.str().compare("4 | 0000 | 0101 | 1001") == 0) {
             return 40;
         } else if (instr_class.str().compare("4 | 0000 | 0001 | 1001") == 0) {
@@ -404,7 +406,9 @@ unsigned int MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *It
             return 33;
         } else if (instr_class.str().compare("3 | 000 | 000 | 001") == 0) { // BR
             return 34;
-        } else if (instr_class.str().compare("4 | 0000 | 0101 | 1001") == 0) {
+        } else if (instr_class.str().compare("3 | 000 | 000 | 111") == 0) { // program mem
+            return 35;
+        }else if (instr_class.str().compare("4 | 0000 | 0101 | 1001") == 0) {
             return 40;
         } else if (instr_class.str().compare("4 | 0000 | 0001 | 1001") == 0) {
             return 41;

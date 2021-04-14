@@ -1055,7 +1055,7 @@ static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     // lead to confusion on how the program is patched (NOPs almost never suffice)
 
     // MOV #8, R3
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MPS430::CG).addImm(8);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
 }
 static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
@@ -1076,6 +1076,12 @@ static void Build_3_000_010_101(MachineBasicBlock &MBB, MachineBasicBlock::itera
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rm), MSP430::CG).addReg(UnusedReg).addImm(2);
 }
 
+static void Build_3_000_000_111(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+    DebugLoc DL;
+    // MOV 2(RProgram), R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rm), MSP430::CG).addReg(UnusedReg).addImm(2);
+}
+
 static void Build_3_000_101_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // SWPB @RData
@@ -1084,8 +1090,10 @@ static void Build_3_000_101_001(MachineBasicBlock &MBB, MachineBasicBlock::itera
 
 static void Build_3_000_001_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    //! TODO: what to do about a PUSH?
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(432);
+    // PUSH RUnused
+    // POP RUnused
+    BuildMI(MBB, I, DL, TII->get(MSP430::PUSH16r), MSP430::CG);
+    BuildMI(MBB, I, DL, TII->get(MSP430::POP16r), MSP430::CG);
 }
 
 static void Build_3_000_100_000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
@@ -1109,7 +1117,6 @@ static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::it
 
 static void Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    //! TODO: what to do about a PUSH?
     // MOV #0, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(0);
 }
@@ -1158,6 +1165,24 @@ static void Build_6_000000_010001_110001(MachineBasicBlock &MBB, MachineBasicBlo
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), UnusedReg)
             .addImm(2)
             .addReg(UnusedReg)
+            .addImm(2);
+}
+
+static void Build_6_000000_000101_111001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RData, Register RProgram) {
+    DebugLoc DL;
+    // ADD 2(RProgram), 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mm), RData)
+            .addImm(2)
+            .addReg(RProgram)
+            .addImm(2);
+}
+
+static void Build_6_000000_000001_111001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RData, Register RProgram) {
+    DebugLoc DL;
+    // MOV 2(RProgram), 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), RData)
+            .addImm(2)
+            .addReg(RProgram)
             .addImm(2);
 }
 
@@ -1776,9 +1801,17 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                         if (MII[BB] == BB->end()) {
                             LLVM_DEBUG(dbgs() << "insert nop (end-of-block)");
                             CompensateInstr(RI, *BB, MII[BB],RData, RProgram);
+                            if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
+                                BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
+                                MII[Ref]++;
+                            }
                         } else if (MII[BB] == MTI[BB]) {
                             LLVM_DEBUG(dbgs() << "insert nop (begin-of-branching-code)");
                             CompensateInstr(RI, *BB, MII[BB], RData, RProgram);
+                            if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
+                                BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
+                                MII[Ref]++;
+                            }
                         } else {
                             auto &MI = *MII[BB];
                             auto MIL = TII->getInstrLatency(nullptr, MI);
@@ -1786,6 +1819,10 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                             if (RIL != MIL) {
                                 LLVM_DEBUG(dbgs() << "insert nop (non-matching-latency)");
                                 CompensateInstr(RI, *BB, MII[BB], RData, RProgram);
+                                if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
+                                    BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
+                                    MII[Ref]++;
+                                }
                             } else {
                                 LLVM_DEBUG(dbgs() << "latencies match");
                                 MII[BB]++;
@@ -2349,7 +2386,7 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock &MBB,
                                                 MachineBasicBlock::iterator I,
                                                 Register RData, Register RProgram) {
-    char accessed_memregions [2] = {'*', '*'};
+
     auto instr_class = 0;
     unsigned int num_oper = MI.getNumOperands();
     unsigned  int num_memoper = MI.getNumMemOperands();
@@ -2379,6 +2416,9 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                 op->getValue()->getValueID() == Value::ConstantArrayVal) {
             program_memory = mem_operand;
         }
+        /*if (op->getPointerInfo().V.getOpaqueValue() > (void *)0x0200) {
+            program_memory = mem_operand;
+        }*/
         mem_operand++;
     }
     DebugLoc DL;
@@ -2438,6 +2478,9 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
         case 34:
             Build_3_000_000_001(MBB, I, TII, RData);
             break;
+        case 35:
+            Build_3_000_000_111(MBB, I, TII, RProgram);
+            break;
         case 40:
             Build_4_0000_0101_1001(MBB, I, TII, RData);
             break;
@@ -2466,10 +2509,10 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
             Build_6_000000_010001_110001(MBB, I, TII, RData);
             break;
         case 660:
-            Build_6_000000_000101_111001(MBB, I, TII, RProgram);
+            Build_6_000000_000101_111001(MBB, I, TII, RData, RProgram);
             break;
         case 661:
-            Build_6_000000_000001_111001(MBB, I, TII, RProgram);
+            Build_6_000000_000001_111001(MBB, I, TII, RData, RProgram);
             break;
         default:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
@@ -2833,6 +2876,7 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                         auto I = BBI.BB->begin();
                         for (; I != --BBI.BB->end(); ++I) {}
                         // MOV #0xFFDC, RProgram
+
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
                         // MOV #0x0402, RData
@@ -2926,7 +2970,10 @@ MSP430DMADefenderPass::AlignFingerprint(
         // TODO: Requires changes to the computation of the Result vector
     }
 
-    Register UnusedReg = FindUnusedRegisters(MBBs);
+    std::vector<Register> UnusedRegs = FindUnusedRegisters(MBBs);
+    assert(UnusedRegs.size() >= 3);
+
+
 
     // Align each of the MBBs with the fingperprint
     for (auto MBB : MBBs) {
@@ -3030,7 +3077,23 @@ MSP430DMADefenderPass::AlignFingerprint(
                 FPBBI->IsAligned = false; // HACK (The fingerprint represents an
                 //          aligned region, so safe to do)
                 // (Aligned regions should not change anymore)
-                AlignNonTerminatingInstructions({FPMBB, CurMBB}, UnusedReg);
+                if (UnusedRegs.size() >= 3) {
+                    // MOV #0x0402, RData
+                    // MOV #0xFFDC, RProgram
+                    auto I = FPBBI->BB->begin();
+                    for ( ; I != --FPBBI->BB->end(); ++I) {}
+                    // MOV #0xFFDC, RProgram
+                    BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
+                            TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
+                    // MOV #0x0402, RData
+                    BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
+                            TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
+
+                    AlignNonTerminatingInstructions({FPMBB, CurMBB}, UnusedRegs[0], UnusedRegs[1]);
+                } else {
+                    llvm_unreachable("Cannot find three unused registers to make dummies with");
+                }
+
                 FPBBI->IsAligned= true;
 
                 if (! FPBBI->IsLoopLatch) {
@@ -3189,9 +3252,10 @@ void MSP430DMADefenderPass::RedoAnalysisPasses() {
 // It returns the first register that is found not to be used in the given BB, starting from R4.
 std::vector<Register> MSP430DMADefenderPass::FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs) {
     bool used[12] = {false, false, false, false, false, false, false, false, false, false, false, false};
-    std::vector<Register> regs;
+    std::vector<Register> regs = {MSP430::R4, MSP430::R5, MSP430::R6, MSP430::R7, MSP430::R8, MSP430::R9, MSP430::R10, MSP430::R11, MSP430::R12, MSP430::R14, MSP430::R14, MSP430::R15};
+    std::vector<Register> unused_regs;
     for (MachineBasicBlock *BB : BBs){
-        for (auto it = BB->instr_begin(); it != BB->instr_end(); ++ it ) {
+        for (auto it = BB->instr_begin(); it != BB->instr_end(); ++it ) {
             std::pair<bool,bool> testR4 = (*it).readsWritesVirtualRegister(MSP430::R4);
             std::pair<bool,bool> testR5 = (*it).readsWritesVirtualRegister(MSP430::R5);
             std::pair<bool,bool> testR6 = (*it).readsWritesVirtualRegister(MSP430::R6);
@@ -3205,33 +3269,36 @@ std::vector<Register> MSP430DMADefenderPass::FindUnusedRegisters(std::vector<Mac
             std::pair<bool,bool> testR14 = (*it).readsWritesVirtualRegister(MSP430::R14);
             std::pair<bool,bool> testR15 = (*it).readsWritesVirtualRegister(MSP430::R15);
             if (testR4.first || testR4.second) {
-                regs.push_back(MSP430::R4);
+                used[0] = true;
             } else if (testR5.first || testR5.second) {
-                regs.push_back(MSP430::R5);
+                used[1] = true;
             } else if (testR6.first || testR6.second) {
-                regs.push_back(MSP430::R6);
+                used[2] = true;
             } else if (testR7.first || testR7.second) {
-                regs.push_back(MSP430::R7);
+                used[3] = true;
             } else if (testR8.first || testR8.second) {
-                regs.push_back(MSP430::R8);
+                used[4] = true;
             } else if (testR9.first || testR9.second) {
-                regs.push_back(MSP430::R9);
+                used[5] = true;
             } else if (testR10.first || testR10.second) {
-                regs.push_back(MSP430::R10);
+                used[6] = true;
             } else if (testR11.first || testR11.second) {
-                regs.push_back(MSP430::R11);
+                used[7] = true;
             } else if (testR12.first || testR12.second) {
-                regs.push_back(MSP430::R12);
+                used[8] = true;
             } else if (testR13.first || testR13.second) {
-                regs.push_back(MSP430::R13);
+                used[9] = true;
             } else if (testR14.first || testR14.second) {
-                regs.push_back(MSP430::R14);
+                used[10] = true;
             } else if (testR15.first || testR15.second) {
-                regs.push_back(MSP430::R15);
+                used[11] = true;
             }
         }
     }
-    return regs;
+    for (int i = 0; i < 12; i++){
+        if (!used[i]) unused_regs.push_back(regs[i]);
+    }
+    return unused_regs;
 }
 
 // Aligns the sensitive branch that starts with BBI.BB
@@ -3293,10 +3360,10 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, R
         // TODO: Make sure this loop terminates
         if (Succs.Loop == nullptr) {
             assert(Succs.Succs.size() > 1);
-            AlignNonTerminatingInstructions(Succs.Succs, UnusedRegs);
+            AlignNonTerminatingInstructions(Succs.Succs, RData, RProgram);
             std::copy(Succs.Succs.begin(), Succs.Succs.end(), std::back_inserter(MBBs));
             Succs = ComputeSuccessors(Succs.Succs, ExitOfSR);
-            UnusedRegs = FindUnusedRegisters(Succs.Succs);
+            //UnusedRegs = FindUnusedRegisters(Succs.Succs);
         }
         else {
             // A loop has been detected by ComputeSuccessors, deal with it first
@@ -3318,7 +3385,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, R
 #endif
 
             Succs = ComputeSuccessors(S, ExitOfSR);
-            std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
+            //std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
         }
     }
 
@@ -3550,18 +3617,30 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
 
             assert(UnusedRegs.size() >= 3);
             if (UnusedRegs.size() >= 3) {
+                // PUSH RData
                 // MOV #0x0402, RData
+                // PUSH RProgram
                 // MOV #0xFFDC, RProgram
+                // BBS
+                // POP RProgram
+                // POP RData
                 auto I = BBI.BB->begin();
                 for ( ; I != --BBI.BB->end(); ++I) {}
                 // MOV #0xFFDC, RProgram
                 BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                         TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
+                // PUSH RProgram
+                BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::PUSH16r), UnusedRegs[1]);
                 // MOV #0x0402, RData
                 BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                         TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
-
+                // PUSH RData
+                BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::PUSH16r), UnusedRegs[0]);
                 AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1]);
+                // POP RData
+                BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[0]);
+                // POP RProgram
+                BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[1]);
             } else {
                 llvm_unreachable("Cannot find three unused registers to make dummies with");
             }

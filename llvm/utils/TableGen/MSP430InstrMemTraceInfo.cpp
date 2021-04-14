@@ -243,8 +243,8 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
                 v = INSrm_asms(opcode, "0x0402", "0xDFDE");
                 for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"3 | 000 | 010 | 101")); }
               } else {
-                v = INSrm_asms(opcode, "0x0402", "0xDFDE");
-                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"3 | 000 | 010 | 101")); }
+                v = INSrm_asms(opcode, "0xFFDC", "0x0010");
+                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"3 | 000 | 000 | 111")); }
               }
 
               break;
