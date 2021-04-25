@@ -347,86 +347,113 @@ unsigned int MSP430InstrInfo::getInstrMemTraceClass(const InstrItineraryData *It
     if (AccessedMemregions == "dd"){
         auto &instr = MSP430::Instruction_classes_data_data[MI.getDesc().getOpcode()];
         instr_class = instr[1];
-        if (instr_class.str().compare("1 | 0 | 0 | 1") == 0) {
-            return 10;
-        } else if (instr_class.str().compare("2 | 00 | 00 | 11") == 0) {
-            return 20;
-        } else if (instr_class.str().compare("2 | 00 | 10 | 01") == 0) {
-            return 21;
-        }  else if (instr_class.str().compare("3 | 000 | 010 | 101") == 0) {
-            return 30;
-        } else if (instr_class.str().compare("3 | 000 | 101 | 001") == 0) { // data mem
-            return 31;
-        } else if (instr_class.str().compare("3 | 000 | 001 | 001") == 0) {
-            return 32;
-        } else if (instr_class.str().compare("3 | 000 | 100 | 000") == 0) { // RET-instruction
-            return 33;
-        } else if (instr_class.str().compare("3 | 000 | 000 | 001") == 0) { // BR
-            return 34;
-        } else if (instr_class.str().compare("3 | 000 | 000 | 111") == 0) { // program mem
-            return 35;
-        } else if (instr_class.str().compare("4 | 0000 | 0101 | 1001") == 0) {
-            return 40;
-        } else if (instr_class.str().compare("4 | 0000 | 0001 | 1001") == 0) {
-            return 41;
-        } else if (instr_class.str().compare("5 | 00000 | 00101 | 11001") == 0) {
-            return 50;
-        } else if (instr_class.str().compare("5 | 00000 | 10101 | 10001") == 0) {
-            return 51;
-        } else if (instr_class.str().compare("5 | 00000 | 00001 | 11001") == 0) {
-            return 52;
-        } else if (instr_class.str().compare("5 | 00000 | 10001 | 10001") == 0) {
-            return 53;
-        } else if (instr_class.str().compare("5 | 00000 | 10000 | 00000") == 0) { // RETI-instruction
-            return 54;
-        } else if (instr_class.str().compare("6 | 000000 | 010101 | 110001") == 0) {
-            return 60;
-        } else if (instr_class.str().compare("6 | 000000 | 010001 | 110001") == 0) {
-            return 61;
-        }
-        else {
-            return 0;
-        }
-    } else if (AccessedMemregions == "pd") {
+    }
+    else if (AccessedMemregions == "pd") {
         auto &instr = MSP430::Instruction_classes_progr_data[MI.getDesc().getOpcode()];
         instr_class = instr[1];
-        if (instr_class.str().compare("1 | 0 | 0 | 1") == 0) {
-            return 10;
-        } else if (instr_class.str().compare("2 | 00 | 00 | 11") == 0) {
-            return 20;
-        } else if (instr_class.str().compare("2 | 00 | 10 | 01") == 0) { // POP-instruction
-            return 21;
-        } else if (instr_class.str().compare("3 | 000 | 010 | 101") == 0) {
-            return 30;
-        } else if (instr_class.str().compare("3 | 000 | 101 | 001") == 0) {
-            return 31;
-        } else if (instr_class.str().compare("3 | 000 | 001 | 001") == 0) { // PUSH-instruction
-            return 32;
-        } else if (instr_class.str().compare("3 | 000 | 100 | 000") == 0) { // RET-instruction
-            return 33;
-        } else if (instr_class.str().compare("3 | 000 | 000 | 001") == 0) { // BR
-            return 34;
-        } else if (instr_class.str().compare("3 | 000 | 000 | 111") == 0) { // program mem
-            return 35;
-        }else if (instr_class.str().compare("4 | 0000 | 0101 | 1001") == 0) {
-            return 40;
-        } else if (instr_class.str().compare("4 | 0000 | 0001 | 1001") == 0) {
-            return 41;
-        } else if (instr_class.str().compare("5 | 00000 | 00101 | 11001") == 0) {
-            return 50;
-        } else if (instr_class.str().compare("5 | 00000 | 00001 | 11001") == 0) {
-            return 52;
-        } else if (instr_class.str().compare("5 | 00000 | 10000 | 00000") == 0) { // RETI-instruction
-            return 54;
-        } else if (instr_class.str().compare("6 | 000000 | 000101 | 111001") == 0) {
-            return 660;
-        } else if (instr_class.str().compare("6 | 000000 | 000001 | 111001") == 0) {
-            return 661;
-        }else {
-            return 0;
-        }
+    }
+    else if (AccessedMemregions == "ped") {
+        auto &instr = MSP430::Instruction_classes_per_data[MI.getDesc().getOpcode()];
+        instr_class = instr[1];
+    }
+    else if (AccessedMemregions == "dpe") {
+        auto &instr = MSP430::Instruction_classes_data_per[MI.getDesc().getOpcode()];
+        instr_class = instr[1];
+    }
+    else if (AccessedMemregions == "ppe") {
+        auto &instr = MSP430::Instruction_classes_progr_per[MI.getDesc().getOpcode()];
+        instr_class = instr[1];
+    }
+    else if (AccessedMemregions == "pepe") {
+        auto &instr = MSP430::Instruction_classes_per_per[MI.getDesc().getOpcode()];
+        instr_class = instr[1];
     }
 
+    if (instr_class.str().compare("1 | 0 | 0 | 1") == 0) {
+        return 10;
+    } else if (instr_class.str().compare("2 | 00 | 00 | 11") == 0) {
+        return 20;
+    } else if (instr_class.str().compare("2 | 00 | 10 | 01") == 0) {
+        return 21;
+    }  else if (instr_class.str().compare("3 | 000 | 010 | 101") == 0) {
+        return 30;
+    } else if (instr_class.str().compare("3 | 000 | 101 | 001") == 0) { // data mem
+        return 31;
+    } else if (instr_class.str().compare("3 | 000 | 001 | 001") == 0) {
+        return 32;
+    } else if (instr_class.str().compare("3 | 000 | 100 | 000") == 0) { // RET-instruction
+        return 33;
+    } else if (instr_class.str().compare("3 | 000 | 000 | 001") == 0) { // BR
+        return 34;
+    } else if (instr_class.str().compare("3 | 000 | 000 | 111") == 0) { // program mem
+        return 35;
+    } else if (instr_class.str().compare("4 | 0000 | 0101 | 1001") == 0) {
+        return 40;
+    } else if (instr_class.str().compare("4 | 0000 | 0001 | 1001") == 0) {
+        return 41;
+    } else if (instr_class.str().compare("5 | 00000 | 00101 | 11001") == 0) {
+        return 50;
+    } else if (instr_class.str().compare("5 | 00000 | 10101 | 10001") == 0) {
+        return 51;
+    } else if (instr_class.str().compare("5 | 00000 | 00001 | 11001") == 0) {
+        return 52;
+    } else if (instr_class.str().compare("5 | 00000 | 10001 | 10001") == 0) {
+        return 53;
+    } else if (instr_class.str().compare("5 | 00000 | 10000 | 00000") == 0) { // RETI-instruction
+        return 54;
+    } else if (instr_class.str().compare("6 | 000000 | 010101 | 110001") == 0) {
+        return 60;
+    } else if (instr_class.str().compare("6 | 000000 | 010001 | 110001") == 0) {
+        return 61;
+    } else if (instr_class.str().compare("6 | 000000 | 000101 | 111001") == 0) { // New for program memory
+        return 660;
+    } else if (instr_class.str().compare("6 | 000000 | 000001 | 111001") == 0) {
+        return 661;
+    } else if (instr_class.str().compare("2 | 10 | 00 | 01") == 0) { // New for peripheral memory
+        return 2221;
+    } else if (instr_class.str().compare("3 | 010 | 000 | 101") == 0) {
+        return 3330;
+    } else if (instr_class.str().compare("3 | 101 | 000 | 001") == 0) {
+        return 3331;
+    } else if (instr_class.str().compare("4 | 0001 | 0000 | 1001") == 0) {
+        return 4440;
+    } else if (instr_class.str().compare("4 | 0101 | 0000 | 1001") == 0) {
+        return 4441;
+    } else if (instr_class.str().compare("5 | 10000 | 00001 | 10001") == 0) {
+        return 5550;
+    } else if (instr_class.str().compare("5 | 10000 | 00101 | 10001") == 0) {
+        return 5551;
+    } else if (instr_class.str().compare("5 | 00001 | 10000 | 10001") == 0) {
+        return 5552;
+    } else if (instr_class.str().compare("5 | 00101 | 10000 | 10001") == 0) {
+        return 5553;
+    } else if (instr_class.str().compare("5 | 00001 | 00000 | 11001") == 0) {
+        return 5554;
+    } else if (instr_class.str().compare("5 | 00101 | 00000 | 11001") == 0) {
+        return 5555;
+    } else if (instr_class.str().compare("5 | 10001 | 00000 | 10001") == 0) {
+        return 5556;
+    } else if (instr_class.str().compare("5 | 10101 | 00000 | 10001") == 0) {
+        return 5557;
+    } else if (instr_class.str().compare("6 | 010000 | 000001 | 110001") == 0) {
+        return 6660;
+    } else if (instr_class.str().compare("6 | 010000 | 000101 | 110001") == 0) {
+        return 6661;
+    } else if (instr_class.str().compare("6 | 000001 | 010000 | 110001") == 0) {
+        return 6662;
+    } else if (instr_class.str().compare("6 | 000101 | 010000 | 110001") == 0) {
+        return 6663;
+    } else if (instr_class.str().compare("6 | 000001 | 000000 | 111001") == 0) {
+        return 6664;
+    } else if (instr_class.str().compare("6 | 000101 | 000000 | 111001") == 0) {
+        return 6665;
+    } else if (instr_class.str().compare("6 | 010001 | 000000 | 110001") == 0) {
+        return 6666;
+    } else if (instr_class.str().compare("6 | 010101 | 000000 | 110001") == 0) {
+        return 6667;
+    } else {
+        return 0;
+    }
 
 }
 

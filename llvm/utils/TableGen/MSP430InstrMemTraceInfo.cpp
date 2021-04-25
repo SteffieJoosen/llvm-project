@@ -13,24 +13,17 @@
 
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
 
 #include "CodeGenTarget.h"
 #include "CodeGenDAGPatterns.h"
 
-#include <algorithm>
-#include <set>
+
 #include <string>
 #include <vector>
-#include <iostream>
-#include <boost/algorithm/string.hpp>
 
 
 
@@ -57,6 +50,7 @@ public:
 
 const unsigned int DATA_MEM = 0;
 const unsigned int PROGR_MEM = 1;
+const unsigned int PER_MEM = 2;
 
 // Calculates the integer value representing the BitsInit object
 static inline uint64_t getValueFromBitsInit(const BitsInit *B) {
@@ -70,23 +64,23 @@ static inline uint64_t getValueFromBitsInit(const BitsInit *B) {
   return Value;
 }
 
-static std::vector<std::string> INSmr_asms(std::string opcode, std::string absolute, std::string relative) {
+static std::vector<std::string> INSmr_asms(std::string opcode, std::string absolute, std::string relative = "\0") {
   std::vector<std::string> asms;
     asms.push_back("mov #" + absolute + ", r5;nop;" + opcode + " r4, 2(r5)");
-    asms.push_back(opcode + " r4, " + relative);
+    if (relative != "\0") asms.push_back(opcode + " r4, " + relative);
     asms.push_back(opcode + " r4, &"+ absolute);
   return asms;
 }
 
-static std::vector<std::string> INSrm_asms(std::string opcode, std::string absolute, std::string relative) {
+static std::vector<std::string> INSrm_asms(std::string opcode, std::string absolute, std::string relative = "\0") {
   std::vector<std::string> asms;
     asms.push_back("mov #" + absolute + ", r4;nop;" + opcode + " 2(r4), r5");
-    asms.push_back(opcode + " " + relative + ", r5");
+    if (relative != "\0") asms.push_back(opcode + " " + relative + ", r5");
     asms.push_back(opcode + " &"+ absolute + ", r5");
   return asms;
 }
 
-static std::vector<std::string> INSmm_asms(std::string opcode, std::string src_absolute, std::string src_relative, std::string dst_absolute, std::string dst_relative) {
+static std::vector<std::string> INSmm_asms(std::string opcode, std::string src_absolute, std::string dst_absolute, std::string src_relative = "\0", std::string dst_relative = "\0") {
   std::vector<std::string> asms;
   std::vector<std::string> source_asms;
   // Indexed source mode
@@ -94,59 +88,59 @@ static std::vector<std::string> INSmm_asms(std::string opcode, std::string src_a
   // Absolute source mode
   source_asms.push_back(opcode + " &" + src_absolute + ", ");
   // Symbolic source mode
-  source_asms.push_back(opcode + " " + src_relative + ", ");
+  if (src_relative != "\0") source_asms.push_back(opcode + " " + src_relative + ", ");
 
   for (auto asmstr : source_asms){
     asms.push_back("mov #" + dst_absolute + ", r5;nop;" + asmstr + "2(r5)");
     asms.push_back(asmstr + "&" + dst_absolute);
-    asms.push_back(asmstr + dst_relative);
+    if (dst_relative != "\0") asms.push_back(asmstr + dst_relative);
   }
   return asms;
 }
 
-static std::vector<std::string> INSmn_asms(std::string opcode, std::string src_absolute, std::string dst_absolute, std::string relative) {
+static std::vector<std::string> INSmn_asms(std::string opcode, std::string src_absolute, std::string dst_absolute, std::string dst_relative = "\0") {
     std::vector<std::string> asms;
     std::string source_asm;
     source_asm = "mov #" + src_absolute + ", r4;nop;" + opcode +  " @r4, ";
 
     asms.push_back("mov #" + dst_absolute + ", r5;nop;" + source_asm + "2(r5)");
     asms.push_back(source_asm + "&" + dst_absolute);
-    asms.push_back(source_asm + relative);
+    if (dst_relative != "\0") asms.push_back(source_asm + " " + dst_relative);
 
     return asms;
 }
 
-static std::vector<std::string> INSmi_asms(std::string opcode, std::string absolute, std::string relative) {
+static std::vector<std::string> INSmi_asms(std::string opcode, std::string absolute, std::string relative = "\0") {
     std::vector<std::string> asms;
     asms.push_back("mov #" + absolute + ", r5;nop;" + opcode +  " #0x0045, 2(r5)");
-    asms.push_back(opcode + " #0x0045, " + relative);
+    if (relative != "\0") asms.push_back(opcode + " #0x0045, " + relative);
     asms.push_back(opcode + " #0x0045, &" + absolute);
 
     return asms;
 }
 
-static std::vector<std::string> INSmp_asms(std::string opcode, std::string src_absolute, std::string dst_absolute, std::string relative) {
+static std::vector<std::string> INSmp_asms(std::string opcode, std::string src_absolute, std::string dst_absolute, std::string dst_relative = "\0") {
     std::vector<std::string> asms;
     asms.push_back("mov #" + src_absolute + ", r4;nop;" + "mov #" + dst_absolute + ", r5;nop;" + opcode +  " @r4+, 2(r5)");
-    asms.push_back("mov #" + src_absolute + ", r4;nop;" + opcode + " @r4+, " + relative);
+    if (dst_relative != "\0") asms.push_back("mov #" + src_absolute + ", r4;nop;" + opcode + " @r4+, " + dst_relative);
     asms.push_back("mov #" + src_absolute + ", r4;nop;" + opcode + " @r4+, &" + dst_absolute);
 
     return asms;
 }
 
-static std::vector<std::string> INSmc_asms(std::string opcode, std::string absolute, std::string relative) {
+static std::vector<std::string> INSmc_asms(std::string opcode, std::string absolute, std::string relative = "\0") {
     std::vector<std::string> asms;
     asms.push_back("mov #" + absolute + ", r5;nop;" + opcode +  " #0x0008, 2(r5)");
-    asms.push_back(opcode + " #0x0008, " + relative);
+    if (relative != "\0") asms.push_back(opcode + " #0x0008, " + relative);
     asms.push_back(opcode + " #0x0008, &" + absolute);
 
     return asms;
 }
 
-static std::vector<std::string> INSm_asms(std::string opcode, std::string absolute, std::string relative) {
+static std::vector<std::string> INSm_asms(std::string opcode, std::string absolute, std::string relative = "\0") {
   std::vector<std::string> asms;
     asms.push_back("mov #" + absolute + ", r4;nop;" + opcode + " 2(r4)");
-    asms.push_back(opcode + " " + relative);
+    if (relative != "\0") asms.push_back(opcode + " " + relative);
     asms.push_back(opcode + " &"+ absolute);
   return asms;
 }
@@ -190,7 +184,7 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
     switch (getValueFromBitsInit(As)) {
       case 0: // Register mode
         if (opcode.rfind("br", 0) == 0) { // Br
-          gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4","3 | 000 | 000 | 001"));
+          gen_instr_class_pairs.push_back(std::make_pair("mov #0xFFDC, r4;nop;" + opcode + " r4","2 | 00 | 00 | 11"));
         } else {
           switch (getValueFromBitsInit(Ad)) {
             case 0:
@@ -203,21 +197,20 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
               //INS#mr
               //R4 and R5 used
               // Indexed and symbolic
-              if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+              if (dest_mem_region == DATA_MEM) {
                 v = INSmr_asms(opcode, "0x0406", "0xDFDE");
                 if (opcode.rfind("mov", 0) == 0) { // MOV
                   for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"4 | 0000 | 0001 | 1001")); }
                 } else {
                   for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"4 | 0000 | 0101 | 1001")); }
                 }
-              }
-              else {
+              } else if (dest_mem_region == PER_MEM){
                   // Destination operand in data memory
-                v = INSmr_asms(opcode, "0x0406", "0xDFDE");
+                v = INSmr_asms(opcode, "0x0010");
                 if (opcode.rfind("mov", 0) == 0) { // MOV
-                  for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"4 | 0000 | 0001 | 1001")); }
+                  for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"4 | 0001 | 0000 | 1001")); }
                 } else {
-                  for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"4 | 0000 | 0101 | 1001")); }
+                  for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"4 | 0101 | 0000 | 1001")); }
                 }
               }
               break;
@@ -226,25 +219,27 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
         break;
       case 1: // Indexed, symbolic, absolute
         if (opcode.rfind("br", 0) == 0) { // Bm
-            if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+            if (dest_mem_region == DATA_MEM) {
                 v = INSm_asms(opcode, "0x0402", "0xDFDE");
-                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"simulation fails")); }
-            } else {
-                // Destination operand in data memory
-                v = INSm_asms(opcode, "0x0402", "0xDFDE");
-                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"simulation fails")); }
+                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"test")); }
+            } else if (dest_mem_region == PER_MEM) {
+                v = INSm_asms(opcode, "0x0010");
+                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"test")); }
             }
 
         } else {
           switch (getValueFromBitsInit(Ad)) {
             case 0:
               //INS#rm
-              if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+              if (source_mem_region == DATA_MEM) {
                 v = INSrm_asms(opcode, "0x0402", "0xDFDE");
                 for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"3 | 000 | 010 | 101")); }
-              } else {
+              } else if (source_mem_region == PROGR_MEM) {
                 v = INSrm_asms(opcode, "0xFFDC", "0x0010");
                 for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"3 | 000 | 000 | 111")); }
+              } else if (source_mem_region == PER_MEM) {
+                  v = INSrm_asms(opcode, "0x0010");
+                  for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"3 | 010 | 000 | 101")); }
               }
 
               break;
@@ -252,41 +247,67 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
               //INS#mm
 
               if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
-                v = INSmm_asms(opcode, "0x0402", "0xDFDE", "0x0402", "0xDFDE");
+                v = INSmm_asms(opcode, "0x0402", "0x0402", "0xDFDE", "0xDFDE");
                 if (opcode.rfind("mov", 0) == 0) { // MOV
                     for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000000 | 010001 | 110001")); }
                 } else {
                     for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000000 | 010101 | 110001")); }
                 }
-              } else {
+              } else if (source_mem_region == PROGR_MEM && dest_mem_region == DATA_MEM){
                   // Destination in data memory
-                v = INSmm_asms(opcode, "0xFFDC", "0x0010", "0x0402", "0xDFDE");
-                if (opcode.rfind("mov", 0) == 0) { // MOV
-                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000000 | 000001 | 111001")); }
-                } else {
-                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000000 | 000101 | 111001")); }
-                }
+                    v = INSmm_asms(opcode, "0xFFDC","0x0402","0x0010", "0xDFDE");
+                    if (opcode.rfind("mov", 0) == 0) { // MOV
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000000 | 000001 | 111001")); }
+                    } else {
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000000 | 000101 | 111001")); }
+                    }
+              } else if (source_mem_region == PER_MEM && dest_mem_region == DATA_MEM) {
+                  v = INSmm_asms(opcode, "0x0010","0x0402", "\0", "0xDFDE");
+                  if (opcode.rfind("mov", 0) == 0) { // MOV
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 010000 | 000001 | 110001")); }
+                  } else {
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 010000 | 000101 | 110001")); }
+                  }
+              } else if (source_mem_region == DATA_MEM && dest_mem_region == PER_MEM) {
+                  v = INSmm_asms(opcode, "0x0402","0x0010", "0xDFDE");
+                  if (opcode.rfind("mov", 0) == 0) { // MOV
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000001 | 010000 | 110001")); }
+                  } else {
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000101 | 010000 | 110001")); }
+                  }
+              } else if (source_mem_region == PROGR_MEM && dest_mem_region == PER_MEM) {
+                  v = INSmm_asms(opcode, "0xFFDC","0x0010", "0x0010");
+                  if (opcode.rfind("mov", 0) == 0) { // MOV
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000001 | 000000 | 111001")); }
+                  } else {
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 000101 | 000000 | 111001")); }
+                  }
+              } else if (source_mem_region == PER_MEM && dest_mem_region == PER_MEM) {
+                  v = INSmm_asms(opcode, "0x0010","0x0010");
+                  if (opcode.rfind("mov", 0) == 0) { // MOV
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 010001 | 000000 | 110001")); }
+                  } else {
+                      for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"6 | 010101 | 000000 | 110001")); }
+                  }
               }
+
               break;
             }
         }
         break;
 
       case 2:
-        if (opcode.rfind("br", 0) == 0) { // Bm
-            if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM)  {
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4","simulation fails"));
-            } else {
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0xFFDC, r4;nop;" + opcode + " @r4","simulation fails"));
-            }
-
+        if (opcode.rfind("br", 0) == 0) { // Bm : always branch to program memory
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0xFFDC, r4;nop;" + opcode + " @r4","3 | 000 | 000 | 100"));
         } else {
           switch (getValueFromBitsInit(Ad)) {
             case 0:
-                if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+                if (source_mem_region == DATA_MEM) {
                     gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4, r5","2 | 00 | 10 | 01"));
-                } else {
+                } else if (source_mem_region == PROGR_MEM) {
                     gen_instr_class_pairs.push_back(std::make_pair("mov #0xFFDC, r4;nop;" + opcode + " @r4, r5","2 | 00 | 00 | 11"));
+                } else if (source_mem_region == PER_MEM) {
+                    gen_instr_class_pairs.push_back(std::make_pair("mov #0x0010, r4;nop;" + opcode + " @r4, r5","2 | 10 | 00 | 01"));
                 }
                 break;
             case 1:
@@ -298,21 +319,49 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
                     } else {
                       for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 10101 | 10001")); }
                     }
-                } else {
+                } else if (source_mem_region == PROGR_MEM && dest_mem_region == DATA_MEM) {
                   v = INSmn_asms(opcode, "0xFFDC","0x0402", "0xDFDE");
                   if (opcode.rfind("mov", 0) == 0) { // MOV
                       for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00001 | 11001")); }
                   } else {
                       for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00101 | 11001")); }
                   }
-              }
+              } else if (source_mem_region == PER_MEM && dest_mem_region == DATA_MEM) {
+                    v = INSmn_asms(opcode, "0x0010","0x0402", "0xDFDE");
+                    if (opcode.rfind("mov", 0) == 0) { // MOV
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 10000 | 00001 | 10001")); }
+                    } else {
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 10000 | 00101 | 10001")); }
+                    }
+                } else if (source_mem_region == DATA_MEM && dest_mem_region == PER_MEM) {
+                    v = INSmn_asms(opcode, "0x0402","0x0010");
+                    if (opcode.rfind("mov", 0) == 0) { // MOV
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00001 | 10000 | 10001")); }
+                    } else {
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00101 | 10000 | 10001")); }
+                    }
+                } else if (source_mem_region == PROGR_MEM && dest_mem_region == PER_MEM) {
+                    v = INSmn_asms(opcode, "0xFFDC","0x0010");
+                    if (opcode.rfind("mov", 0) == 0) { // MOV
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00001 | 00000 | 11001")); }
+                    } else {
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00101 | 00000 | 11001")); }
+                    }
+                } else if (source_mem_region == PER_MEM && dest_mem_region == PER_MEM) {
+                    v = INSmn_asms(opcode, "0x0010","0x0010");
+                    if (opcode.rfind("mov", 0) == 0) { // MOV
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 10001 | 00000 | 10001")); }
+                    } else {
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 10101 | 00000 | 10001")); }
+                    }
+                }
             break;
           }
         }
         break;
       case 3:
-        if (opcode.rfind("br", 0) == 0) { // BRCALLi
-          gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0046","simulation fails"));
+        if (opcode.rfind("br", 0) == 0) { // BR
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x0046","3 | 000 | 000 | 100"));
         } else {
           switch (getValueFromBitsInit(Ad)) {
             case 0: // INS#ri, don't use constant generator
@@ -325,18 +374,19 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
                 }  else {
                   if (opcode.rfind("pop", 0) == 0) { // POP
                     gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4","2 | 00 | 10 | 01"));
-                      if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+                      if (dest_mem_region == DATA_MEM) {
                           gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4","5 | 00000 | 10001 | 10001"));
-                      } else  {
-                          // Destination operand in data memory
-                          gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4","no class"));
+                      } else if (dest_mem_region == PER_MEM) {
+                          gen_instr_class_pairs.push_back(std::make_pair("mov #0x0010, r4;nop;" + opcode + " @r4","per_mem"));
                       }
 
                   } else {
-                      if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+                      if (source_mem_region == DATA_MEM) {
                           gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4+, r5","2 | 00 | 10 | 01"));
-                      } else  {
+                      } else if (source_mem_region == PROGR_MEM) {
                           gen_instr_class_pairs.push_back(std::make_pair("mov #0xFFDC, r4;nop;" + opcode + " @r4+, r5","2 | 00 | 00 | 11"));
+                      } else if (source_mem_region == PER_MEM) {
+                          gen_instr_class_pairs.push_back(std::make_pair("mov #0x0010, r4;nop;" + opcode + " @r4+, r5","2 | 10 | 00 | 01"));
                       }
                   }
 
@@ -346,38 +396,42 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
               break;
             case 1:
             if (instruction_name.back() == 'i') { // INS#mi, don't use constant generator
-                if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+                if (dest_mem_region == DATA_MEM) {
                     v = INSmi_asms(opcode, "0x0402", "0xDFDE");
                     if (opcode.rfind("mov", 0) == 0) { // MOV
                         for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00001 | 11001")); }
                     } else {
                         for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00101 | 11001")); }
                     }
-                } else {
+                } else if (dest_mem_region == PER_MEM){
                     // Destination operand in data memory
-                    v = INSmi_asms(opcode, "0x0402", "0xDFDE");
+                    v = INSmi_asms(opcode, "0x0010");
                     if (opcode.rfind("mov", 0) == 0) { // MOV
-                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00001 | 11001")); }
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00001 | 00000 | 11001")); }
                     } else {
-                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00101 | 11001")); }
+                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00101 | 00000 | 11001")); }
                     }
                 }
             }
             else { // INS#mp (no MOV instructions here)
                 if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
                     v = INSmp_asms(opcode, "0x0402",  "0x0402", "0xDFDE");
-                    if (opcode.rfind("mov", 0) == 0) { // MOV
-                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 10001 | 10001")); }
-                    } else {
-                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 10101 | 10001")); }
-                    }
-                } else {
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 10101 | 10001")); }
+                } else if (source_mem_region == PROGR_MEM && dest_mem_region == DATA_MEM) {
                     v = INSmp_asms(opcode, "0xFFDC", "0x0402", "0xDFDE");
-                    if (opcode.rfind("mov", 0) == 0) { // MOV
-                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"no class")); }
-                    } else {
-                        for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00101 | 11001")); }
-                    }
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00000 | 00101 | 11001")); }
+                } else if (source_mem_region == PER_MEM && dest_mem_region == DATA_MEM) {
+                    v = INSmp_asms(opcode, "0x0010", "0x0402", "0xDFDE");
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 10000 | 00101 | 10001")); }
+                } else if (source_mem_region == DATA_MEM && dest_mem_region == PER_MEM) {
+                    v = INSmp_asms(opcode, "0x0402", "0x0010");
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00101 | 10000 | 10001")); }
+                } else if (source_mem_region == PROGR_MEM && dest_mem_region == PER_MEM) {
+                    v = INSmp_asms(opcode, "0xFFDC", "0x0010");
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 00101 | 00000 | 11001")); }
+                } else if (source_mem_region == PER_MEM && dest_mem_region == PER_MEM) {
+                    v = INSmp_asms(opcode, "0x0010", "0x0010");
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr,"5 | 10101 | 00000 | 10001")); }
                 }
             }
             break;
@@ -402,12 +456,12 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
       }
       switch (As) {
         case 0:
-          if (opcode.rfind("call",0) == 0) { // BRCALLr
+          if (opcode.rfind("call",0) == 0) {
             gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4","simulation fails"));
           } else {
               if (opcode.rfind("br",0) == 0) { // Br
                   // Branch to program memory
-                  gen_instr_class_pairs.push_back(std::make_pair("mov #0xFFDC, r4;nop;" + opcode + " r4","3 | 000 | 000 | 001"));
+                  gen_instr_class_pairs.push_back(std::make_pair("mov #0xFFDC, r4;nop;" + opcode + " r4","BRCALL not yet"));
               } else if (opcode.rfind("push",0) == 0) { // PUSH
               gen_instr_class_pairs.push_back(std::make_pair(opcode + " r4","3 | 000 | 001 | 001"));
             } else {
@@ -417,39 +471,44 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
           }
           break;
         case 1:
-            if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+            if (dest_mem_region == DATA_MEM) {
                 v = INSm_asms(opcode, "0x0402", "0xDFDE");
                 if (opcode.rfind("br", 0) == 0 || opcode.rfind("call", 0) == 0) { // BRCALLm
-                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "simulation fails")); }
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "BRCALL not yet")); }
                 } else {
                     for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "4 | 0000 | 0101 | 1001")); }
                 }
-            } else{
-                v = INSm_asms(opcode, "0x0402", "0xDFDE");
+            } else if (dest_mem_region == PER_MEM) {
+                v = INSm_asms(opcode, "0x0010");
                 if (opcode.rfind("br", 0) == 0 || opcode.rfind("call", 0) == 0) { // BRCALLm
-                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "simulation fails")); }
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "BRCALL not yet")); }
                 } else {
-                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "simulation fails")); }
+                    for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "4 | 0101 | 0000 | 1001")); }
                 }
             }
             break;
         case 2:
-            if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+            if (dest_mem_region == DATA_MEM) {
                 gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4","3 | 000 | 101 | 001"));
-            } else {
-                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4","no class"));
+            } else if (dest_mem_region == PER_MEM) {
+                gen_instr_class_pairs.push_back(std::make_pair("mov #0x0010, r4;nop;" + opcode + " @r4","3 | 101 | 000 | 001"));
             }
             break;
         case 3:
           if (instruction_name.back() == 'i') { // INS#i, use constant generator or not
             if (opcode.rfind("br", 0) == 0 || opcode.rfind("call",0) == 0) { // BRCALLi
                 // Branch to program memory
-              gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0xFFDC","simulation fails"));
+              gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0xFFDC","BRCALL not yet"));
             } else if (opcode.rfind("push",0) == 0) { // PUSH
                 gen_instr_class_pairs.push_back(std::make_pair(opcode + " #0x00046","4 | 0000 | 0001 | 1001"));
             } else { /*no cases yet*/ }
           } else { // INS#p
-              gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4+","3 | 000 | 101 | 001"));
+              if (dest_mem_region == DATA_MEM) {
+                  gen_instr_class_pairs.push_back(std::make_pair("mov #0x0402, r4;nop;" + opcode + " @r4+","3 | 000 | 101 | 001"));
+              } else if (dest_mem_region == PER_MEM) {
+                  gen_instr_class_pairs.push_back(std::make_pair("mov #0x0010, r4;nop;" + opcode + " @r4+","3 | 101 | 000 | 001"));
+              }
+
           }
           break;
 
@@ -474,20 +533,19 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
 
       case 1:
         //INS#mc
-        if (source_mem_region == DATA_MEM && dest_mem_region == DATA_MEM) {
+        if (dest_mem_region == DATA_MEM) {
             v = INSmc_asms(opcode, "0x0402", "0xDFDE");
             if (opcode.rfind("mov", 0) == 0) { // MOV
                 for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "4 | 0000 | 0001 | 1001")); }
             } else {
                 for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "4 | 0000 | 0101 | 1001")); }
             }
-        } else if (source_mem_region == PROGR_MEM && dest_mem_region == DATA_MEM) {
-            // Source operand in data memory
-            v = INSmc_asms(opcode, "0x0402", "0xDFDE");
+        } else if (dest_mem_region == PER_MEM) {
+            v = INSmc_asms(opcode, "0x0010");
             if (opcode.rfind("mov", 0) == 0) { // MOV
-                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "no class")); }
+                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "4 | 0001 | 0000 | 1001")); }
             } else {
-                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "4 | 0000 | 0101 | 1001")); }
+                for (auto asmstr : v) { gen_instr_class_pairs.push_back(std::make_pair(asmstr, "4 | 0101 | 0000 | 1001")); }
             }
         }
         break;
@@ -560,7 +618,103 @@ void MSP430InstrMemTraceInfo::run(raw_ostream &OS) {
 
   }
 
-  OS << "};\n";
+  OS << "};\n\n";
+
+    OS << "static const StringRef Instruction_classes_per_data[][2] = {\n";
+
+
+    Num = 0;
+    for (const CodeGenInstruction *II : Target.getInstructionsByEnumValue()) {
+
+        Record *Inst = II->TheDef;
+        auto generated_instructions = ComputeMemoryTraceClass(II, OS, PER_MEM, DATA_MEM);
+        OS << "/* " << Num << "*/ "
+           << "{"
+           << "\"" << generated_instructions[0].first;
+        for (unsigned i = 1; i < generated_instructions.size(); i++){
+            OS  << " --- " << generated_instructions[i].first;
+
+        }
+        OS  << "\", \""
+            << generated_instructions[0].second << "\"}, "
+            << "// " << Namespace << "::" << Inst->getName() << "\n";
+        Num++;
+
+    }
+
+    OS << "};\n\n";
+
+    OS << "static const StringRef Instruction_classes_data_per[][2] = {\n";
+
+
+    Num = 0;
+    for (const CodeGenInstruction *II : Target.getInstructionsByEnumValue()) {
+
+        Record *Inst = II->TheDef;
+        auto generated_instructions = ComputeMemoryTraceClass(II, OS, DATA_MEM, PER_MEM);
+        OS << "/* " << Num << "*/ "
+           << "{"
+           << "\"" << generated_instructions[0].first;
+        for (unsigned i = 1; i < generated_instructions.size(); i++){
+            OS  << " --- " << generated_instructions[i].first;
+
+        }
+        OS  << "\", \""
+            << generated_instructions[0].second << "\"}, "
+            << "// " << Namespace << "::" << Inst->getName() << "\n";
+        Num++;
+
+    }
+
+    OS << "};\n\n";
+
+    OS << "static const StringRef Instruction_classes_progr_per[][2] = {\n";
+
+
+    Num = 0;
+    for (const CodeGenInstruction *II : Target.getInstructionsByEnumValue()) {
+
+        Record *Inst = II->TheDef;
+        auto generated_instructions = ComputeMemoryTraceClass(II, OS, PROGR_MEM, PER_MEM);
+        OS << "/* " << Num << "*/ "
+           << "{"
+           << "\"" << generated_instructions[0].first;
+        for (unsigned i = 1; i < generated_instructions.size(); i++){
+            OS  << " --- " << generated_instructions[i].first;
+
+        }
+        OS  << "\", \""
+            << generated_instructions[0].second << "\"}, "
+            << "// " << Namespace << "::" << Inst->getName() << "\n";
+        Num++;
+
+    }
+
+    OS << "};\n\n";
+
+    OS << "static const StringRef Instruction_classes_per_per[][2] = {\n";
+
+
+    Num = 0;
+    for (const CodeGenInstruction *II : Target.getInstructionsByEnumValue()) {
+
+        Record *Inst = II->TheDef;
+        auto generated_instructions = ComputeMemoryTraceClass(II, OS, PER_MEM, PER_MEM);
+        OS << "/* " << Num << "*/ "
+           << "{"
+           << "\"" << generated_instructions[0].first;
+        for (unsigned i = 1; i < generated_instructions.size(); i++){
+            OS  << " --- " << generated_instructions[i].first;
+
+        }
+        OS  << "\", \""
+            << generated_instructions[0].second << "\"}, "
+            << "// " << Namespace << "::" << Inst->getName() << "\n";
+        Num++;
+
+    }
+
+    OS << "};\n\n";
 
   OS << "} // end namespace " << Namespace << "\n";
   OS << "} // end namespace llvm\n";

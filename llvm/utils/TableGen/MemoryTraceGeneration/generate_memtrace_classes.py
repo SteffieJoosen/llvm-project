@@ -237,14 +237,82 @@ found_table = False
 all_instructions = []
 for pos, line in enumerate(inc_file):
     if "Instruction_classes_progr_data" in line:
-        if mem_region == "pd":
+        if mem_region == "prd":
             found_table = True
         elif mem_region == "dd":
             found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
     if "Instruction_classes_data_data" in line:
-        if mem_region == "pd":
+        if mem_region == "prd":
             found_table = False
         elif mem_region == "dd":
+            found_table = True
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_per_data" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = True
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_data_per" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = True
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_progr_per" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = True
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_per_per" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
             found_table = True
     if found_table:
         if "{" in line and "}," in line and not "nothing yet" in line:

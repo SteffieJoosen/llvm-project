@@ -197,7 +197,7 @@ namespace {
         ComputeSuccessors(std::vector<MachineBasicBlock *> L, MachineBasicBlock *Exit);
 
         std::vector<Register> FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs);
-        void AlignNonTerminatingInstructions(std::vector<MachineBasicBlock *> L, Register RData, Register RProgram);
+        void AlignNonTerminatingInstructions(std::vector<MachineBasicBlock *> L, Register RData, Register RProgram, Register RPeriph);
         void CanonicalizeTerminatingInstructions(MachineBasicBlock *MBB);
         void AlignTwoWayBranch(MachineBasicBlock &MBB);
 
@@ -223,7 +223,7 @@ namespace {
         void RegisterDefs(MBBInfo &BBI);
 
         void CompensateInstr(const MachineInstr &MI, MachineBasicBlock &MBB,
-                             MachineBasicBlock::iterator MBBI, Register RData, Register RProgram);
+                             MachineBasicBlock::iterator MBBI, Register RData, Register RProgram, Register RPeriph);
         void CompensateCall(const MachineInstr &Call, MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator MBBI);
         void SecureCall(MachineInstr &Call);
@@ -277,7 +277,7 @@ namespace {
         void SecureCalls();
         void AlignSensitiveBranches();
 
-        void AlignSensitiveBranch(MBBInfo &BBI, Register RData, Register RProgram);
+        void AlignSensitiveBranch(MBBInfo &BBI, Register RData, Register RProgram, Register RPeriph);
         std::vector<MachineBasicBlock *>
         AlignSensitiveLoop(MachineLoop *Loop, std::vector<MachineBasicBlock *> MBBs);
         std::vector<MachineBasicBlock *>
@@ -1070,6 +1070,23 @@ static void Build_2_00_10_01(MachineBasicBlock &MBB, MachineBasicBlock::iterator
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(UnusedReg);
 }
 
+static void Build_2_10_00_01(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+    DebugLoc DL;
+    // MOV @RPeriph, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(UnusedReg);
+}
+
+static void Build_3_101_000_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+    DebugLoc DL;
+    // SWPB @RPeriph
+    BuildMI(MBB, I, DL, TII->get(MSP430::SWPB16n)).addReg(UnusedReg);
+}
+
+static void Build_3_010_000_101(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+    DebugLoc DL;
+    // MOV 2(RPeriph), R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rm), MSP430::CG).addReg(UnusedReg).addImm(2);
+}
 static void Build_3_000_010_101(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // MOV 2(RData), R3
@@ -1107,6 +1124,17 @@ static void Build_3_000_000_001(MachineBasicBlock &MBB, MachineBasicBlock::itera
     BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(434);
 }
 
+static void Build_4_0001_0000_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+    DebugLoc DL;
+    // MOV #0, 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(0);
+}
+
+static void Build_4_0101_0000_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+    DebugLoc DL;
+    // RRA 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::RRA16m), UnusedReg).addImm(2);
+}
 static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // indirect benchmark program
@@ -1120,16 +1148,123 @@ static void Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::it
     // MOV #0, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(0);
 }
+
+static void Build_6_010101_000000_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
+    DebugLoc DL;
+    // ADD 2(RPeriph), 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mm), RPeriph)
+            .addImm(2)
+            .addReg(RPeriph)
+            .addImm(2);
+}
+static void Build_6_010001_000000_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
+    DebugLoc DL;
+    // MOV 2(RPeriph), 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), RPeriph)
+            .addImm(2)
+            .addReg(RPeriph)
+            .addImm(2);
+}
+
+static void Build_6_000101_000000_111001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RProgram) {
+    DebugLoc DL;
+    // ADD 2(RProgram), 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mm), RPeriph)
+            .addImm(2)
+            .addReg(RProgram)
+            .addImm(2);
+}
+static void Build_6_000001_000000_111001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RProgram) {
+    DebugLoc DL;
+    // MOV 2(RProgram), 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), RPeriph)
+            .addImm(2)
+            .addReg(RProgram)
+            .addImm(2);
+}
+static void Build_6_000101_010000_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // ADD 2(RData), 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mm), RPeriph)
+            .addImm(2)
+            .addReg(RData)
+            .addImm(2);
+}
+static void Build_6_000001_010000_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // MOV 2(RData), 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), RPeriph)
+            .addImm(2)
+            .addReg(RData)
+            .addImm(2);
+}
+static void Build_6_010000_000101_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // ADD 2(RPeriph), 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mm), RData)
+            .addImm(2)
+            .addReg(RPeriph)
+            .addImm(2);
+}
+static void Build_6_010000_000001_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // MOV 2(RPeriph), 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), RData)
+            .addImm(2)
+            .addReg(RPeriph)
+            .addImm(2);
+}
+static void Build_5_10101_00000_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
+    DebugLoc DL;
+    // ADD @RPeriph, 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mn), RPeriph).addImm(2).addReg(RPeriph);
+}
+static void Build_5_10001_00000_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
+    DebugLoc DL;
+    // MOV @RPeriph, 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mn), RPeriph).addImm(2).addReg(RPeriph);
+}
+static void Build_5_00101_00000_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
+    DebugLoc DL;
+    // ADD #42, 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), RPeriph).addImm(2).addImm(42);
+}
+static void Build_5_00001_00000_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
+    DebugLoc DL;
+    // MOV #42, 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mi), RPeriph).addImm(2).addImm(42);
+}
+static void Build_5_00101_10000_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // ADD @RData, 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mn), RPeriph).addImm(2).addReg(RData);
+}
+static void Build_5_00001_10000_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // MOV @RData, 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mn), RPeriph).addImm(2).addReg(RData);
+}
+static void Build_5_10000_00101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // ADD @RPeriph, 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mn), RData).addImm(2).addReg(RPeriph);
+}
+
+static void Build_5_10000_00001_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
+    DebugLoc DL;
+    // MOV @RPeriph, 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mn), RData).addImm(2).addReg(RPeriph);
+}
 static void Build_5_00000_00101_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // ADD #42, 2(RData)
     BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), UnusedReg).addImm(2).addImm(42);
 }
 
-static void Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
+static void Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RData) {
     DebugLoc DL;
-    // ADD @RUnused, 2(RData)
-    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mn), UnusedReg).addImm(2).addReg(UnusedReg);
+    // ADD @RData, 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mn), RData).addImm(2).addReg(RData);
 }
 
 static void Build_5_00000_00001_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
@@ -1248,37 +1383,6 @@ static void BuildNOP3(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rm), MSP430::CG)
             .addReg(MSP430::PC)
             .addImm(2);
-}
-
-static void BuildNOP4(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                      const TargetInstrInfo *TII) {
-    DebugLoc DL; // FIXME: Where to get DebugLoc from?
-
-    // BIC  #0, 0(R4)    ; 4 cycles, 2 words
-    BuildMI(MBB, I, DL, TII->get(MSP430::BIC16mi), MSP430::R4)
-            .addImm(0)
-            .addImm(0);
-}
-
-static void BuildNOP5(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                      const TargetInstrInfo *TII) {
-    DebugLoc DL; // FIXME: Where to get DebugLoc from?
-
-    // MOV  @R4, 0(R4)   ; 5 cycles, 2 words
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mn), MSP430::R4)
-            .addImm(0)
-            .addReg(MSP430::R4);
-}
-
-static void BuildNOP6(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                      const TargetInstrInfo *TII) {
-    DebugLoc DL; // FIXME: Where to get DebugLoc from?
-
-    // MOV  0(R4), 0(R4) ; 6 cycles, 3 words
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mm), MSP430::R4)
-            .addImm(0)
-            .addReg(MSP430::R4)
-            .addImm(0);
 }
 
 // TODO: MSP430 specific
@@ -1730,7 +1834,7 @@ static void DumpMF(MachineFunction &MF) {
 #endif
 
 void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
-        std::vector<MachineBasicBlock *> L, Register RData, Register RProgram) {
+        std::vector<MachineBasicBlock *> L, Register RData, Register RProgram, Register RPeriph) {
     assert(L.size() > 1);
     // Create two maps, mapping MBBs to
     //   1) instruction iterator (pointing to the beginning of the MBB)
@@ -1800,14 +1904,14 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                         LLVM_DEBUG(dbgs() << "  " << GetName(BB) << ": ");
                         if (MII[BB] == BB->end()) {
                             LLVM_DEBUG(dbgs() << "insert nop (end-of-block)");
-                            CompensateInstr(RI, *BB, MII[BB],RData, RProgram);
+                            CompensateInstr(RI, *BB, MII[BB],RData, RProgram, RPeriph);
                             if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
                                 BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
                                 MII[Ref]++;
                             }
                         } else if (MII[BB] == MTI[BB]) {
                             LLVM_DEBUG(dbgs() << "insert nop (begin-of-branching-code)");
-                            CompensateInstr(RI, *BB, MII[BB], RData, RProgram);
+                            CompensateInstr(RI, *BB, MII[BB], RData, RProgram, RPeriph);
                             if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
                                 BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
                                 MII[Ref]++;
@@ -1818,7 +1922,7 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                             LLVM_DEBUG(dbgs() << MI << " (latency=" << MIL << "): ");
                             if (RIL != MIL) {
                                 LLVM_DEBUG(dbgs() << "insert nop (non-matching-latency)");
-                                CompensateInstr(RI, *BB, MII[BB], RData, RProgram);
+                                CompensateInstr(RI, *BB, MII[BB], RData, RProgram, RPeriph);
                                 if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
                                     BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
                                     MII[Ref]++;
@@ -2385,7 +2489,7 @@ void MSP430DMADefenderPass::ClassifyBranches() {
 void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock &MBB,
                                                 MachineBasicBlock::iterator I,
-                                                Register RData, Register RProgram) {
+                                                Register RData, Register RProgram, Register RPeriph) {
 
     auto instr_class = 0;
     unsigned int num_oper = MI.getNumOperands();
@@ -2514,6 +2618,70 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
         case 661:
             Build_6_000000_000001_111001(MBB, I, TII, RData, RProgram);
             break;
+        case 2221:
+            Build_2_10_00_01(MBB, I, TII, RPeriph);
+            break;
+        case 3330:
+            Build_3_010_000_101(MBB, I, TII, RPeriph);
+            break;
+        case 3331:
+            Build_3_101_000_001(MBB, I, TII, RPeriph);
+            break;
+        case 4440:
+            Build_4_0001_0000_1001(MBB, I, TII, RPeriph);
+            break;
+        case 4441:
+            Build_4_0101_0000_1001(MBB, I, TII, RPeriph);
+            break;
+        case 5550:
+            Build_5_10000_00001_10001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 5551:
+            Build_5_10000_00101_10001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 5552:
+            Build_5_00001_10000_10001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 5553:
+            Build_5_00101_10000_10001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 5554:
+            Build_5_00001_00000_11001(MBB, I, TII, RPeriph);
+            break;
+        case 5555:
+            Build_5_00101_00000_11001(MBB, I, TII, RPeriph);
+            break;
+        case 5556:
+            Build_5_10001_00000_10001(MBB, I, TII, RPeriph);
+            break;
+        case 5557:
+            Build_5_10101_00000_10001(MBB, I, TII, RPeriph);
+            break;
+        case 6660:
+            Build_6_010000_000001_110001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 6661:
+            Build_6_010000_000101_110001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 6662:
+            Build_6_000001_010000_110001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 6663:
+            Build_6_000101_010000_110001(MBB, I, TII, RPeriph, RData);
+            break;
+        case 6664:
+            Build_6_000001_000000_111001(MBB, I, TII, RPeriph, RProgram);
+            break;
+        case 6665:
+            Build_6_000101_000000_111001(MBB, I, TII, RPeriph, RProgram);;
+            break;
+        case 6666:
+            Build_6_010001_000000_110001(MBB, I, TII, RPeriph);
+            break;
+        case 6667:
+            Build_6_010101_000000_110001(MBB, I, TII, RPeriph);
+            break;
+
         default:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
             MI.dump();
@@ -2882,7 +3050,7 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                         // MOV #0x0402, RData
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
-                        AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1]); // Recursive call (indirect)
+                        AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1], UnusedRegs[2]); // Recursive call (indirect)
                     } else {
                         llvm_unreachable("Cannot find three unused registers to make dummies with");
                     }
@@ -3089,7 +3257,7 @@ MSP430DMADefenderPass::AlignFingerprint(
                     BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
                             TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
 
-                    AlignNonTerminatingInstructions({FPMBB, CurMBB}, UnusedRegs[0], UnusedRegs[1]);
+                    AlignNonTerminatingInstructions({FPMBB, CurMBB}, UnusedRegs[0], UnusedRegs[1], UnusedRegs[2]);
                 } else {
                     llvm_unreachable("Cannot find three unused registers to make dummies with");
                 }
@@ -3313,7 +3481,7 @@ std::vector<Register> MSP430DMADefenderPass::FindUnusedRegisters(std::vector<Mac
 // Consequently, GetFingerprint() will return the correct fingerprint.
 //
 // Remark: Recomputes analysis passes
-void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, Register RProgram) {
+void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, Register RProgram, Register RPeriph) {
 #if 0
     switch (BBI.BClass) {
     case BCFork:
@@ -3360,7 +3528,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, R
         // TODO: Make sure this loop terminates
         if (Succs.Loop == nullptr) {
             assert(Succs.Succs.size() > 1);
-            AlignNonTerminatingInstructions(Succs.Succs, RData, RProgram);
+            AlignNonTerminatingInstructions(Succs.Succs, RData, RProgram, RPeriph);
             std::copy(Succs.Succs.begin(), Succs.Succs.end(), std::back_inserter(MBBs));
             Succs = ComputeSuccessors(Succs.Succs, ExitOfSR);
             //UnusedRegs = FindUnusedRegisters(Succs.Succs);
@@ -3636,7 +3804,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
                         TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
                 // PUSH RData
                 BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::PUSH16r), UnusedRegs[0]);
-                AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1]);
+                AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1], UnusedRegs[2]);
                 // POP RData
                 BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[0]);
                 // POP RProgram
