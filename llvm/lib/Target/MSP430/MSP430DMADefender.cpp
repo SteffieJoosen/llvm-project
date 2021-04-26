@@ -1226,7 +1226,7 @@ static void Build_5_10001_00000_10001(MachineBasicBlock &MBB, MachineBasicBlock:
 }
 static void Build_5_00101_00000_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
     DebugLoc DL;
-    // ADD #42, 2(RData)
+    // ADD #42, 2(RPeriph)
     BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), RPeriph).addImm(2).addImm(42);
 }
 static void Build_5_00001_00000_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
@@ -3041,15 +3041,19 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                     if (UnusedRegs.size() >= 3) {
                         // MOV #0x0402, RData
                         // MOV #0xFFDC, RProgram
+                        // MOV #0x0010, RPeriph
                         auto I = BBI.BB->begin();
                         for (; I != --BBI.BB->end(); ++I) {}
+                        // MOV #0x0010, RPeriph
+                        BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                                TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0X0010);
                         // MOV #0xFFDC, RProgram
-
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
                         // MOV #0x0402, RData
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
+
                         AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1], UnusedRegs[2]); // Recursive call (indirect)
                     } else {
                         llvm_unreachable("Cannot find three unused registers to make dummies with");
@@ -3248,8 +3252,12 @@ MSP430DMADefenderPass::AlignFingerprint(
                 if (UnusedRegs.size() >= 3) {
                     // MOV #0x0402, RData
                     // MOV #0xFFDC, RProgram
+                    // MOV #0x0010, RPeriph
                     auto I = FPBBI->BB->begin();
                     for ( ; I != --FPBBI->BB->end(); ++I) {}
+                    // MOV #0x0010, RPeriph
+                    BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
+                            TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0x0010);
                     // MOV #0xFFDC, RProgram
                     BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
                             TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
@@ -3789,11 +3797,18 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
                 // MOV #0x0402, RData
                 // PUSH RProgram
                 // MOV #0xFFDC, RProgram
+                // PUSH RPeriph
+                // MOV # 0x0010, RPeriph
                 // BBS
                 // POP RProgram
                 // POP RData
                 auto I = BBI.BB->begin();
                 for ( ; I != --BBI.BB->end(); ++I) {}
+                // MOV #0X0010, RPeriph
+                BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                        TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0x0010);
+                // PUSH RPeriph
+                BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::PUSH16r), UnusedRegs[2]);
                 // MOV #0xFFDC, RProgram
                 BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                         TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
