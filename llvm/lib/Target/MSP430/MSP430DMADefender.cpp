@@ -2496,12 +2496,14 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
     unsigned  int num_memoper = MI.getNumMemOperands();
     int data_memory = -1;
     int program_memory = -1;
+    int per_memory = -1;
     int mem_operand = 0;
+    DebugLoc DL;
     for (auto op : MI.memoperands()) {
         if (op->getValue()->getValueID() == Value::GlobalVariableVal){
             data_memory = mem_operand;
         }
-        if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal||
+        else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal||
                 op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
                 op->getValue()->getValueID() == Value::ConstantFirstVal ||
                 op->getValue()->getValueID() == Value::ConstantLastVal ||
@@ -2519,13 +2521,11 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                 op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
                 op->getValue()->getValueID() == Value::ConstantArrayVal) {
             program_memory = mem_operand;
+        } else {
+            per_memory = mem_operand;
         }
-        /*if (op->getPointerInfo().V.getOpaqueValue() > (void *)0x0200) {
-            program_memory = mem_operand;
-        }*/
         mem_operand++;
     }
-    DebugLoc DL;
     switch (num_memoper) {
         case 0:
             if (MI.getOperand(num_oper-2).isReg()) {
@@ -2542,9 +2542,26 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
             if (program_memory >= 0) {
                 instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
             } else {
-                instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                if (data_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                else if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
             }
             break;
+        case 2:
+            if (program_memory >= 0) {
+                if (per_memory >= 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "ppe");
+                else instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
+            } else {
+                if (data_memory == 1) {
+                    if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "ped");
+                    else if (program_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
+                    else instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                }
+                else if (per_memory == 1) {
+                    if (program_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "ppe");
+                    else if (data_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dpe");
+                    else instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
+                }
+            }
     }
 
     //! TODO: pointers pointing to program memory?
@@ -3824,6 +3841,8 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
                 BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[0]);
                 // POP RProgram
                 BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[1]);
+                // POP RPeriph
+                BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[2]);
             } else {
                 llvm_unreachable("Cannot find three unused registers to make dummies with");
             }
