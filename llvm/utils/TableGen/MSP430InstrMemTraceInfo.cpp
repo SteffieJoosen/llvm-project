@@ -166,9 +166,6 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
         opcode += AsmString.at(i);
         i++;
       }
-      if (opcode == "j$cond") {
-        opcode = "jc";
-      }
   }
 
   Record *Inst = II->TheDef;
@@ -519,7 +516,18 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
   }
 
   else if (Inst->isSubClassOf("CJForm")) {
-    gen_instr_class_pairs.push_back(std::make_pair(opcode + " LABEL","2 | 00 | 00 | 11"));
+      if (opcode == "j$cond") {
+          gen_instr_class_pairs.push_back(std::make_pair("jne LABEL", "2 | 00 | 00 | 11"));
+          gen_instr_class_pairs.push_back(std::make_pair("jeq LABEL", "2 | 00 | 00 | 11"));
+          gen_instr_class_pairs.push_back(std::make_pair("jnc LABEL", "2 | 00 | 00 | 11"));
+          gen_instr_class_pairs.push_back(std::make_pair("jc LABEL", "2 | 00 | 00 | 11"));
+          gen_instr_class_pairs.push_back(std::make_pair("jn LABEL", "2 | 00 | 00 | 11"));
+          gen_instr_class_pairs.push_back(std::make_pair("jge LABEL", "2 | 00 | 00 | 11"));
+          gen_instr_class_pairs.push_back(std::make_pair("jl LABEL", "2 | 00 | 00 | 11"));
+      } else {
+          gen_instr_class_pairs.push_back(std::make_pair(opcode + " LABEL", "2 | 00 | 00 | 11"));
+      }
+
   }
 
   // Constant generators
@@ -552,9 +560,11 @@ static std::vector<std::pair<std::string,std::string>> ComputeMemoryTraceClass(c
     }
   }
   else if (Inst->isSubClassOf("Pseudo")) {
+      //! TODO
     gen_instr_class_pairs.push_back(std::make_pair("nothing yet","no class"));
   }
   else {
+      //! TODO
     gen_instr_class_pairs.push_back(std::make_pair("nothing yet","no class"));
   }
 

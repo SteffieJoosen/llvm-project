@@ -201,8 +201,8 @@ namespace {
         void CanonicalizeTerminatingInstructions(MachineBasicBlock *MBB);
         void AlignTwoWayBranch(MachineBasicBlock &MBB);
 
-        void CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII);
-
+        StringRef CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII);
+        StringRef CheckAccessedMemoryRegionsInstr(MachineInstr &MI);
         // Returns information about sensitivity of machine instructions and basic
         //  block info.
         bool IsSecretDependent(MachineInstr *MI);
@@ -1059,8 +1059,8 @@ static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
 }
 static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV #420, R3
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(420);
+    // MOV #42, R3
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(42);
 }
 
 
@@ -1109,25 +1109,29 @@ static void Build_3_000_001_001(MachineBasicBlock &MBB, MachineBasicBlock::itera
     DebugLoc DL;
     // PUSH RUnused
     // POP RUnused
-    BuildMI(MBB, I, DL, TII->get(MSP430::PUSH16r), MSP430::CG);
     BuildMI(MBB, I, DL, TII->get(MSP430::POP16r), MSP430::CG);
+    BuildMI(MBB, I, DL, TII->get(MSP430::PUSH16r), MSP430::CG);
 }
 
 static void Build_3_000_100_000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL; // RET
-    //! TODO: what to do about a RET?
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(433);
+    BuildMI(MBB, I, DL, TII->get(MSP430::RET), MSP430::CG);
 }
 static void Build_3_000_000_001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     //! TODO: what to do about a BR?
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(434);
+    // MOV R0, RUnused
+    // ADD #1, RUnused
+    // BR RUnused
+    BuildMI(MBB, I, DL, TII->get(MSP430::Br), UnusedReg);
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16rc), UnusedReg).addImm(1);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16rr), UnusedReg).addReg(MSP430::PC);
 }
 
 static void Build_4_0001_0000_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV #0, 2(RPeriph)
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(0);
+    // MOV #8, 2(RPeriph)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(8);
 }
 
 static void Build_4_0101_0000_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
@@ -1145,8 +1149,8 @@ static void Build_4_0000_0101_1001(MachineBasicBlock &MBB, MachineBasicBlock::it
 
 static void Build_4_0000_0001_1001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
-    // MOV #0, 2(RData)
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(0);
+    // MOV #8, 2(RData)
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mc), UnusedReg).addImm(2).addImm(8);
 }
 
 static void Build_6_010101_000000_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
@@ -1280,9 +1284,8 @@ static void Build_5_00000_10001_10001(MachineBasicBlock &MBB, MachineBasicBlock:
 }
 
 static void Build_5_00000_10000_00000(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
-    DebugLoc DL;
-    //! TODO: what to do about a RETI
-    BuildMI(MBB, I, DL, TII->get(MSP430::CMP16ri), MSP430::CG).addImm(454);
+    DebugLoc DL;// RETI
+    BuildMI(MBB, I, DL, TII->get(MSP430::RETI), MSP430::CG);
 }
 
 static void Build_6_000000_010101_110001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
@@ -1322,28 +1325,128 @@ static void Build_6_000000_000001_111001(MachineBasicBlock &MBB, MachineBasicBlo
 }
 
 
-void MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
+StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
                                                        const TargetInstrInfo *TII) {
-    DebugLoc DL;
-    long addrValue;
-    for (MachineBasicBlock *BB : BBs) {
-        bool periphOrProgrMemoryAccessed = false;
-        for (auto instr = BB->instr_begin(); instr != BB->instr_end(); ++instr){
-            for (auto op : instr->memoperands()) {
-                if (op->getValue()->getType()->getTypeID() ==  Type::PointerTyID && !(op->getValue()->getValueID() == Value::GlobalVariableVal)){
-                    addrValue = op->getPointerInfo().Offset;
-                    periphOrProgrMemoryAccessed = true;
-                }
-                if (op->getValue()->getValueID() == Value::ConstantExprVal) {
-                    periphOrProgrMemoryAccessed = true;
-                }
-            }
-        }
 
+
+    int data_memory = -1;
+    int no_data_memory = 0;
+    int program_memory = -1;
+    int per_memory = -1;
+    int no_per_memory = 0;
+    int mem_operand = 0;
+    DebugLoc DL;
+
+    for (auto BB : BBs) {
+        for (auto &MI : BB->instrs()) {
+            unsigned int num_oper = MI.getNumOperands();
+            unsigned  int num_memoper = MI.getNumMemOperands();
+
+            for (auto op : MI.memoperands()) {
+
+                if (op->getValue()->getValueID() == Value::GlobalVariableVal){
+                    data_memory = mem_operand;
+                    no_data_memory += 1;
+                }
+                    /// The code beneath might be helpful for checking program memory accesses
+                    /*else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal ||
+                            op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
+                            op->getValue()->getValueID() == Value::ConstantFirstVal ||
+                            op->getValue()->getValueID() == Value::ConstantLastVal ||
+                            op->getValue()->getValueID() == Value::ConstantDataFirstVal ||
+                            op->getValue()->getValueID() == Value::ConstantDataLastVal ||
+                            op->getValue()->getValueID() == Value::ConstantExprVal ||
+                            op->getValue()->getValueID() == Value::ConstantVectorVal ||
+                            op->getValue()->getValueID() == Value::ConstantTokenNoneVal ||
+                            op->getValue()->getValueID() == Value::ConstantStructVal ||
+                            op->getValue()->getValueID() == Value::ConstantPointerNullVal ||
+                            op->getValue()->getValueID() == Value::ConstantFPVal ||
+                            op->getValue()->getValueID() == Value::ConstantDataVectorVal ||
+                            op->getValue()->getValueID() == Value::ConstantDataArrayVal ||
+                            op->getValue()->getValueID() == Value::ConstantIntVal||
+                            op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
+                            op->getValue()->getValueID() == Value::ConstantArrayVal) {
+                        program_memory = mem_operand;
+                    }*/
+                else {
+                    assert(false && "Only data memory is supported");
+                }
+
+                mem_operand++;
+            }
+
+        }
     }
+
 }
 
 
+
+StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegionsInstr(MachineInstr &MI) {
+    int data_memory = -1;
+    int mem_operand = 0;
+    for (auto op : MI.memoperands()) {
+
+        if (op->getValue()->getValueID() == Value::GlobalVariableVal){
+            data_memory = mem_operand;
+        }
+            /// The code beneath might be helpful for checking program memory accesses
+            /*else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal ||
+                    op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
+                    op->getValue()->getValueID() == Value::ConstantFirstVal ||
+                    op->getValue()->getValueID() == Value::ConstantLastVal ||
+                    op->getValue()->getValueID() == Value::ConstantDataFirstVal ||
+                    op->getValue()->getValueID() == Value::ConstantDataLastVal ||
+                    op->getValue()->getValueID() == Value::ConstantExprVal ||
+                    op->getValue()->getValueID() == Value::ConstantVectorVal ||
+                    op->getValue()->getValueID() == Value::ConstantTokenNoneVal ||
+                    op->getValue()->getValueID() == Value::ConstantStructVal ||
+                    op->getValue()->getValueID() == Value::ConstantPointerNullVal ||
+                    op->getValue()->getValueID() == Value::ConstantFPVal ||
+                    op->getValue()->getValueID() == Value::ConstantDataVectorVal ||
+                    op->getValue()->getValueID() == Value::ConstantDataArrayVal ||
+                    op->getValue()->getValueID() == Value::ConstantIntVal||
+                    op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
+                    op->getValue()->getValueID() == Value::ConstantArrayVal) {
+                program_memory = mem_operand;
+            }*/
+        else {
+            assert(false && "Only data memory is supported");
+        }
+
+        mem_operand++;
+    }
+    auto num_memoper = MI.getNumMemOperands();
+    auto num_oper = MI.getNumOperands();
+    switch (num_memoper) {
+        case 0:
+            if (MI.getOperand(num_oper - 2).isReg()) {
+                if (MI.getOperand(num_oper - 1).isReg()) {
+                    // INS r., r.
+                    return "dd";
+                } else if (MI.getOperand(num_oper - 1).isImm() || MI.getOperand(num_oper - 1).isCImm() ||
+                           MI.getOperand(num_oper - 1).isFPImm()) {
+                    // INS #const, r.
+                    return "pd";
+                }
+            }
+            break;
+        case 1:
+            if ((MI.getOperand(num_oper - 1).isImm() || MI.getOperand(num_oper - 1).isCImm() ||
+                 MI.getOperand(num_oper - 1).isFPImm()) &&
+                !MI.getOperand(num_oper - 2).isReg() &&
+                !MI.getOperand(num_oper - 2).isSymbol()) {
+                return "pd";
+            } else {
+                /*if (data_memory == 0) */ return "dd";
+                //else if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
+            }
+            break;
+        case 2:
+            return "dd";
+            break;
+    }
+}
 
 // !TODO: Should it be "MOV16rc" or "MOV16ri" ??? (because of immediate
 //        value of one) (look also at other places for this choice)
@@ -1897,8 +2000,10 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
             //       types of instruction when no call has been detected
             if (! isCall) {
                 auto &RI = *MII[Ref]++;
+                /*StringRef memregs = CheckAccessedMemoryRegionsInstr(RI);
+                auto RIL = TII->getInstrMemTraceClass(nullptr, RI, memregs);*/
                 auto RIL = TII->getInstrLatency(nullptr, RI);
-                LLVM_DEBUG(dbgs() << " " << RI << " (latency=" << RIL << ")\n");
+                LLVM_DEBUG(dbgs() << " " << RI << " (memtrace=" << RIL << ")\n");
                 for (auto BB : L) {
                     if (BB != Ref) {
                         LLVM_DEBUG(dbgs() << "  " << GetName(BB) << ": ");
@@ -1906,7 +2011,14 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                             LLVM_DEBUG(dbgs() << "insert nop (end-of-block)");
                             CompensateInstr(RI, *BB, MII[BB],RData, RProgram, RPeriph);
                             if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
+                                // MOV @R3, R3
                                 BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
+                                MII[Ref]++;
+                            } else if (RI.getDesc().getOpcode() == 378) { // Br
+                                // MOV #8, R3
+                                // MOV #8, R3
+                                BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
+                                BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
                                 MII[Ref]++;
                             }
                         } else if (MII[BB] == MTI[BB]) {
@@ -1918,8 +2030,10 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                             }
                         } else {
                             auto &MI = *MII[BB];
+                            /*StringRef memregs = CheckAccessedMemoryRegionsInstr(RI);
+                            auto MIL = TII->getInstrMemTraceClass(nullptr, MI, memregs);*/
                             auto MIL = TII->getInstrLatency(nullptr, MI);
-                            LLVM_DEBUG(dbgs() << MI << " (latency=" << MIL << "): ");
+                            LLVM_DEBUG(dbgs() << MI << " (memtrace=" << MIL << "): ");
                             if (RIL != MIL) {
                                 LLVM_DEBUG(dbgs() << "insert nop (non-matching-latency)");
                                 CompensateInstr(RI, *BB, MII[BB], RData, RProgram, RPeriph);
@@ -1928,7 +2042,7 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                                     MII[Ref]++;
                                 }
                             } else {
-                                LLVM_DEBUG(dbgs() << "latencies match");
+                                LLVM_DEBUG(dbgs() << "memtraces match");
                                 MII[BB]++;
                             }
                         }
@@ -2491,19 +2605,26 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                                                 MachineBasicBlock::iterator I,
                                                 Register RData, Register RProgram, Register RPeriph) {
 
-    auto instr_class = 0;
+    auto instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
     unsigned int num_oper = MI.getNumOperands();
     unsigned  int num_memoper = MI.getNumMemOperands();
     int data_memory = -1;
+    int no_data_memory = 0;
     int program_memory = -1;
     int per_memory = -1;
+    int no_per_memory = 0;
     int mem_operand = 0;
     DebugLoc DL;
-    for (auto op : MI.memoperands()) {
+
+    /// TODO: this is not completely correct yet
+    /*for (auto op : MI.memoperands()) {
+
         if (op->getValue()->getValueID() == Value::GlobalVariableVal){
             data_memory = mem_operand;
+            no_data_memory += 1;
         }
-        else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal||
+        /// The code beneath might be helpful for checking program memory accesses
+        /*else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal ||
                 op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
                 op->getValue()->getValueID() == Value::ConstantFirstVal ||
                 op->getValue()->getValueID() == Value::ConstantLastVal ||
@@ -2521,50 +2642,41 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
                 op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
                 op->getValue()->getValueID() == Value::ConstantArrayVal) {
             program_memory = mem_operand;
-        } else {
-            per_memory = mem_operand;
+        }*/
+        /*else {
+            llvm_unreachable("can't support pointers");
         }
+
         mem_operand++;
-    }
-    switch (num_memoper) {
+    }*/
+    /*switch (num_memoper) {
         case 0:
-            if (MI.getOperand(num_oper-2).isReg()) {
+            if (MI.getOperand(num_oper - 2).isReg()) {
                 if (MI.getOperand(num_oper - 1).isReg()) {
                     // INS r., r.
                     instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
-                } else if (MI.getOperand(num_oper-1).isImm() || MI.getOperand(num_oper-1).isCImm() || MI.getOperand(num_oper-1).isFPImm()) {
+                } else if (MI.getOperand(num_oper - 1).isImm() || MI.getOperand(num_oper - 1).isCImm() ||
+                           MI.getOperand(num_oper - 1).isFPImm()) {
                     // INS #const, r.
                     instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
                 }
             }
             break;
         case 1:
-            if (program_memory >= 0) {
+            if ((MI.getOperand(num_oper - 1).isImm() || MI.getOperand(num_oper - 1).isCImm() ||
+                MI.getOperand(num_oper - 1).isFPImm()) &&
+                !MI.getOperand(num_oper - 2).isReg() &&
+                    !MI.getOperand(num_oper - 2).isSymbol()) {
                 instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
             } else {
-                if (data_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
-                else if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
+                /*if (data_memory == 0) *//*instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                //else if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
             }
             break;
         case 2:
-            if (program_memory >= 0) {
-                if (per_memory >= 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "ppe");
-                else instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
-            } else {
-                if (data_memory == 1) {
-                    if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "ped");
-                    else if (program_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
-                    else instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
-                }
-                else if (per_memory == 1) {
-                    if (program_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "ppe");
-                    else if (data_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dpe");
-                    else instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
-                }
-            }
-    }
-
-    //! TODO: pointers pointing to program memory?
+            instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+            break;
+    }*/
 
 
     if (MI.isAnnotationLabel())
@@ -2870,7 +2982,7 @@ void MSP430DMADefenderPass::AlignTriangle(MBBInfo &EBBI) {
   // 3) Generate the actual alignment code
   TII->removeBranch(*T.DivBB); // Ignore the branching code at the end of DivBB
   for (auto &MI : *T.DivBB) {
-    CompensateInstr(MI, *NewBB, NewBB->end());
+    CompensateInstr(MI, *NewBB, NewBB->end(), MSP430::R4, MSP430::R5, MSP430::R6);
   }
 
   // 4) Insert the necessary branching code at the end of the relevant MBBs
@@ -3056,22 +3168,39 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
 
                     assert(UnusedRegs.size() >= 3);
                     if (UnusedRegs.size() >= 3) {
+                        // PUSH RData
                         // MOV #0x0402, RData
+                        // PUSH RProgram
                         // MOV #0xFFDC, RProgram
+                        // PUSH RPeriph
                         // MOV #0x0010, RPeriph
                         auto I = BBI.BB->begin();
-                        for (; I != --BBI.BB->end(); ++I) {}
+                        for (; I->getDesc().getOpcode() != 432; ++I) {}
                         // MOV #0x0010, RPeriph
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0X0010);
+                        // PUSH RPeriph
+                        BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                                TII->get(MSP430::PUSH16r), UnusedRegs[2]);
                         // MOV #0xFFDC, RProgram
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
+                        // PUSH RProgram
+                        BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                                TII->get(MSP430::PUSH16r), UnusedRegs[1]);
                         // MOV #0x0402, RData
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
-
+                        // PUSH RData
+                        BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
+                                TII->get(MSP430::PUSH16r), UnusedRegs[0]);
                         AlignSensitiveBranch(BBI, UnusedRegs[0], UnusedRegs[1], UnusedRegs[2]); // Recursive call (indirect)
+                        // POP RData
+                        BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[0]);
+                        // POP RProgram
+                        BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[1]);
+                        // POP RPeriph
+                        BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[2]);
                     } else {
                         llvm_unreachable("Cannot find three unused registers to make dummies with");
                     }
@@ -3267,22 +3396,40 @@ MSP430DMADefenderPass::AlignFingerprint(
                 //          aligned region, so safe to do)
                 // (Aligned regions should not change anymore)
                 if (UnusedRegs.size() >= 3) {
+                    /*// PUSH RData
                     // MOV #0x0402, RData
+                    // PUSH RProgram
                     // MOV #0xFFDC, RProgram
+                    // PUSH RPeriph
                     // MOV #0x0010, RPeriph
                     auto I = FPBBI->BB->begin();
                     for ( ; I != --FPBBI->BB->end(); ++I) {}
                     // MOV #0x0010, RPeriph
                     BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
                             TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0x0010);
+                    // PUSH RPeriph
+                    BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
+                            TII->get(MSP430::PUSH16r), UnusedRegs[2]);
                     // MOV #0xFFDC, RProgram
                     BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
                             TII->get(MSP430::MOV16rc), UnusedRegs[1]).addImm(0xFFDC);
+                    // PUSH RProgram
+                    BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
+                            TII->get(MSP430::PUSH16r), UnusedRegs[1]);
                     // MOV #0x0402, RData
                     BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
                             TII->get(MSP430::MOV16rc), UnusedRegs[0]).addImm(0x0402);
-
+                    // PUSH RData
+                    BuildMI(*(FPBBI->BB), --I, FPBBI->BB->findDebugLoc(FPBBI->BB->end()),
+                            TII->get(MSP430::PUSH16r), UnusedRegs[0]);*/
                     AlignNonTerminatingInstructions({FPMBB, CurMBB}, UnusedRegs[0], UnusedRegs[1], UnusedRegs[2]);
+                    /*// POP RData
+                    BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[0]);
+                    // POP RProgram
+                    BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[1]);
+                    // POP RPeriph
+                    BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[2]);*/
+
                 } else {
                     llvm_unreachable("Cannot find three unused registers to make dummies with");
                 }
@@ -3538,7 +3685,6 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, R
     // 1) Align non-terminating instructions
     Successors Succs;
     Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
-    //std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
 
 
 
@@ -3556,7 +3702,6 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, R
             AlignNonTerminatingInstructions(Succs.Succs, RData, RProgram, RPeriph);
             std::copy(Succs.Succs.begin(), Succs.Succs.end(), std::back_inserter(MBBs));
             Succs = ComputeSuccessors(Succs.Succs, ExitOfSR);
-            //UnusedRegs = FindUnusedRegisters(Succs.Succs);
         }
         else {
             // A loop has been detected by ComputeSuccessors, deal with it first
@@ -3578,7 +3723,6 @@ void MSP430DMADefenderPass::AlignSensitiveBranch(MBBInfo &BBI, Register RData, R
 #endif
 
             Succs = ComputeSuccessors(S, ExitOfSR);
-            //std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
         }
     }
 
@@ -3820,8 +3964,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
                 // POP RProgram
                 // POP RData
                 auto I = BBI.BB->begin();
-                for ( ; I != --BBI.BB->end(); ++I) {}
-                // MOV #0X0010, RPeriph
+                for ( ; I->getDesc().getOpcode() != 432; ++I) {}
                 BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                         TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0x0010);
                 // PUSH RPeriph
@@ -3957,6 +4100,10 @@ void MSP430DMADefenderPass::PrepareAnalysis() {
         if (IsSecret(Arg)) {
             SensitivityInfo.insert(MI);
         }
+        assert(!Arg.hasByRefAttr() && "no pointers as arguments supported");
+        assert(!Arg.hasPreallocatedAttr() && "no pointers as arguments supported");
+
+
     }
 }
 
@@ -4019,7 +4166,7 @@ bool MSP430DMADefenderPass::runOnMachineFunction(MachineFunction &MF) {
     bool Changed = false;
     const TargetSubtargetInfo &STI = MF.getSubtarget();
     this->MF = &MF;
-    //TII=static_cast<const MSP430InstrInfo *>(MF.getSubtarget().getInstrInfo());
+    //TII=static_cast<const MSP430InstrInfo *>(MF->getSubtarget().getInstrInfo());
     //TLI = STI.getTargetLowering();
     MRI = &MF.getRegInfo();
     TII = STI.getInstrInfo();
