@@ -123,6 +123,12 @@ def create_c_file(instr):
     f.write("__asm__ __volatile__(\r\n")
     for asm in instr:
         f.write("    \"" + asm + "\\n\\t\"\r\n")
+
+    # This is for analyzing program memory
+    #f.write("\"pin:\"\r\n")
+    #f.write("\"    .short 0        ; 0x0\"\r\n")
+    #f.write("\"    .size pin, 2\"\r\n")
+
     f.write(");\r\n")
     f.write("\r\n")
     f.write("}\r\n")
@@ -217,8 +223,8 @@ def generate_instruction(all_instr):
 
     return instr_class
 
-
-all_instr = ' '.join(sys.argv[1:]).split(";")
+print(sys.argv)
+all_instr = ' '.join(sys.argv[1].split('-')).split("_")
 print("Instruction simulated: " + str(all_instr))
 res = generate_instruction(all_instr)
 instr_class = re.sub('\n','',res)

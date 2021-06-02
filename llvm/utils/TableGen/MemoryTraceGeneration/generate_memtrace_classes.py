@@ -2,6 +2,7 @@
 
 import os
 import sys
+import re
 import binascii
 from mem_trace_classification import classify_instruction
 
@@ -227,47 +228,148 @@ if os.path.isdir("/home/steffie/sllvm/sllvm/llvm/utils/TableGen/MemoryTraceGener
 
 os.system("mkdir Classes")
 
+mem_region = input("The combination of memory regions to be accessed: ")
+
 # Read instruction to generate memory tace for
 # This assumes the sllvm github repository is cloned into your home directory
-with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc') as f:
-    all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
+inc_file = open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc')
+found_table = False
+all_instructions = []
+for pos, line in enumerate(inc_file):
+    if "Instruction_classes_progr_data" in line:
+        if mem_region == "prd":
+            found_table = True
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_data_data" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = True
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_per_data" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = True
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_data_per" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = True
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_progr_per" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = True
+        elif mem_region == "pepe":
+            found_table = False
+    if "Instruction_classes_per_per" in line:
+        if mem_region == "prd":
+            found_table = False
+        elif mem_region == "dd":
+            found_table = False
+        elif mem_region == "ped":
+            found_table = False
+        elif mem_region == "dpe":
+            found_table = False
+        elif mem_region == "prpe":
+            found_table = False
+        elif mem_region == "pepe":
+            found_table = True
+    if found_table:
+        if "{" in line and "}," in line and not "nothing yet" in line:
+            all_instructions.append(line)
+
+#with open('/home/steffie/sllvm/build/sllvm/lib/Target/MSP430/MSP430GenInstrMemTraceInfo.inc') as f:
+#    all_instructions = [line.rstrip('\n') if "{" in line and "}," in line and not "nothing yet" in line else "" for line in f]
+
+
 
 print("len(all_instructions) = " + str(len(all_instructions)))
-instr_number = input("Number in .inc file: ")
-range_start = 0
+start_instr_number = input("Start number in .inc file: ")
+end_instr_number = input("End number in .inc file: ")
 i = 0
-while i < len(all_instructions) and not "/* " + instr_number + "*/" in all_instructions[i]:
-    range_start += 1
-    i += 1
-no_instructions_testing = int(input("Number of instructions to generate: "))
+simulated_instr = []
+add_instr = False
+for line in all_instructions:
+    if "/* " + start_instr_number + "*/" in line:
+        add_instr = True
+    if add_instr:
+        simulated_instr.append(line)
+    if "/* " + end_instr_number + "*/" in line:
+        add_instr = False
+
 print("The instructions that are about to be simulated")
-for i in range(range_start,range_start + no_instructions_testing):
-    if all_instructions[i] != "":
-        print(all_instructions[i])
+for i in simulated_instr:
+    print(i)
 
 found_classes = list()
 result_class = ""
 
-for i in range(range_start,range_start + no_instructions_testing):
+total = len(simulated_instr)
+done = 1
+for ins in simulated_instr:
     all_instr = ""
-    if all_instructions[i] != "":
-        all_instr = all_instructions[i].split('{')[1].split('}')[0].split(" , ")[0][1:-1].split(";")
-        addressing_modes = all_instructions[i][-2:]
-        print("Instruction simulated: " + str(all_instr))
-        res = generate_instruction(all_instr)
-        assembly_string = res[0]
-        result_class = res[1]
-        if result_class!= "" :
-            file_name = "Classes/" + result_class + ".txt"
-            if result_class in found_classes:
-                class_file = open(file_name, "a+")
-            else:
-                class_file = open(file_name, "w+")
-                found_classes.append(result_class)
+    if ins != "":
+        this_line = re.sub('\"', '', ', '.join(ins.split('{')[1].split('}')[0].split(", ")[0:-1])).split(' --- ')
+        for asm_code in this_line:
+            all_instr = asm_code.split(";")
+            addressing_modes = ins[-2:]
+            print("Instruction simulated: " + str(all_instr))
+            res = generate_instruction(all_instr)
+            assembly_string = res[0]
+            result_class = res[1]
+            if result_class!= "" :
+                file_name = "Classes/" + result_class + ".txt"
+                if result_class in found_classes:
+                    class_file = open(file_name, "a+")
+                else:
+                    class_file = open(file_name, "w+")
+                    found_classes.append(result_class)
 
 
-            class_file.write(assembly_string + " || "+ addressing_modes +  "\r\n")
-            class_file.close()
-    os.system('echo \"--------------------------------------\"')
-    os.system('echo \"------- | '+ str(int((i-range_start+1)/(no_instructions_testing) *100)) +'% | -------\"')
-    os.system('echo \"--------------------------------------\"\n')
+                class_file.write(assembly_string + " || "+ addressing_modes +  "\r\n")
+                class_file.close()
+
+            os.system('echo \"--------------------------------------\"')
+            os.system('echo \"------- | '+ str(int(done/total *100)) +'% | -------\"')
+            os.system('echo \"--------------------------------------\"\n')
+    done += 1

@@ -1545,6 +1545,9 @@ public:
   virtual unsigned getInstrLatency(const InstrItineraryData *ItinData,
                                    const MachineInstr &MI,
                                    unsigned *PredCost = nullptr) const;
+  virtual unsigned int getInstrMemTraceClass(const InstrItineraryData *ItinData,
+                                          const MachineInstr &MI, StringRef AccessedMemregions,
+                                          unsigned *PredCost = nullptr) const;
 
   virtual unsigned getPredicationCost(const MachineInstr &MI) const;
 

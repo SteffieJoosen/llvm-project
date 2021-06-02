@@ -36,6 +36,7 @@ autoconf/autom4te.cache
 /CMakeLists.txt.user
 # Files created by the memory trace generation toolchain
 /utils/TableGen/MemoryTraceGeneration/Trace.txt
+/utils/TableGen/MemoryTraceGeneration/mem_trace.vcd
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).
 #==============================================================================#
