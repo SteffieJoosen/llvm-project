@@ -1329,19 +1329,20 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineB
                                                        const TargetInstrInfo *TII) {
 
 
+    StringRef result = "allow";
     int data_memory = -1;
     int no_data_memory = 0;
     int program_memory = -1;
     int per_memory = -1;
     int no_per_memory = 0;
-    int mem_operand = 0;
+
     DebugLoc DL;
 
     for (auto BB : BBs) {
         for (auto &MI : BB->instrs()) {
             unsigned int num_oper = MI.getNumOperands();
             unsigned  int num_memoper = MI.getNumMemOperands();
-
+            int mem_operand = 0;
             for (auto op : MI.memoperands()) {
 
                 if (op->getValue()->getValueID() == Value::GlobalVariableVal){
@@ -1368,15 +1369,39 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineB
                             op->getValue()->getValueID() == Value::ConstantArrayVal) {
                         program_memory = mem_operand;
                     }*/
+                else if (num_memoper == 1) {
+                    if(num_oper >= 2) {
+                        // INS Imm(R1), ..
+                        // or
+                        // INS .., Imm(R1)
+                        if (MI.getOperand(MI.getNumOperands() - 2).isReg() &&
+                            MI.getOperand(MI.getNumOperands() - 2).getReg() == MSP430::SP &&
+                            MI.getOperand(MI.getNumOperands() - 1).isImm()) {
+                            BuildMI(*BB, MI, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(17);
+                        }
+                        if (MI.getOperand(0).isReg() &&
+                            MI.getOperand(0).getReg() == MSP430::SP &&
+                            MI.getOperand(1).isImm()) {
+                            BuildMI(*BB, MI, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(18);
+                        }
+                    }
+                } else if (num_memoper == 2) {
+                    // INS Imm(R1), ..
+                    // or
+                    // INS .., Imm(R1)
+                    // where .. may be another memoperand
+                    //! TODO
+                }
                 else {
+                    result = "deny";
                     assert(false && "Only data memory is supported");
                 }
-
                 mem_operand++;
             }
 
         }
     }
+    return result;
 
 }
 
@@ -3164,7 +3189,7 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                     Successors Succs;
                     Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
                     std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
-                    CheckAccessedMemoryRegions(Succs.Succs, TII);
+                    assert(CheckAccessedMemoryRegions(Succs.Succs, TII) == "allow" && "unsupported memory regions accessed");
 
                     assert(UnusedRegs.size() >= 3);
                     if (UnusedRegs.size() >= 3) {
@@ -3950,7 +3975,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
             //! TODO: Make this a set of unused registers and delete UnusedReg. The remaining regs can be used in
             //! CheckAccessedMemoryRegions()
             std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
-            CheckAccessedMemoryRegions(Succs.Succs, TII);
+            assert(CheckAccessedMemoryRegions(Succs.Succs, TII) == "allow" && "unsupported memory regions accessed");
 
             assert(UnusedRegs.size() >= 3);
             if (UnusedRegs.size() >= 3) {
