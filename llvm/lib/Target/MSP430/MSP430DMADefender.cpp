@@ -201,7 +201,7 @@ namespace {
         void CanonicalizeTerminatingInstructions(MachineBasicBlock *MBB);
         void AlignTwoWayBranch(MachineBasicBlock &MBB);
 
-        StringRef CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII);
+        bool CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII);
         StringRef CheckAccessedMemoryRegionsInstr(MachineInstr &MI);
         // Returns information about sensitivity of machine instructions and basic
         //  block info.
@@ -1325,11 +1325,11 @@ static void Build_6_000000_000001_111001(MachineBasicBlock &MBB, MachineBasicBlo
 }
 
 
-StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
+bool MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
                                                        const TargetInstrInfo *TII) {
 
 
-    StringRef result = "allow";
+    bool result = true;
     int data_memory = -1;
     int no_data_memory = 0;
     int program_memory = -1;
@@ -1344,12 +1344,34 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineB
             unsigned  int num_memoper = MI.getNumMemOperands();
             int mem_operand = 0;
             for (auto op : MI.memoperands()) {
-
-                if (op->getValue()->getValueID() == Value::GlobalVariableVal){
-                    data_memory = mem_operand;
-                    no_data_memory += 1;
+                bool global_var = op->getValue()->getValueID() == Value::GlobalVariableVal;
+                bool SP_used = false;
+                if (num_memoper == 1) {
+                    bool SP_source = MI.getOperand(MI.getNumOperands() - 2).isReg() &&
+                                     MI.getOperand(MI.getNumOperands() - 2).getReg() == MSP430::SP &&
+                                     MI.getOperand(MI.getNumOperands() - 1).isImm();
+                    bool SP_dest = MI.getOperand(0).isReg() &&
+                                   MI.getOperand(0).getReg() == MSP430::SP &&
+                                   MI.getOperand(1).isImm();
+                    SP_used = SP_dest || SP_source;
+                } else if (num_memoper == 2) {
+                    //! TODO: Check if SP used
                 }
-                    /// The code beneath might be helpful for checking program memory accesses
+
+                if (! global_var && !SP_used) {
+                    result = false;
+                    assert(false && "Only data memory is supported");
+                } /*else {
+                    BuildMI(*BB, MI, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(19);
+                }*/
+
+
+               /* if (op->getValue()->getValueID() == Value::GlobalVariableVal){
+                    // Memory region is okay
+                    //data_memory = mem_operand;
+                    //no_data_memory += 1;
+                }
+                    /// [Future] The code beneath might be helpful for checking program memory accesses
                     /*else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal ||
                             op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
                             op->getValue()->getValueID() == Value::ConstantFirstVal ||
@@ -1368,22 +1390,25 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineB
                             op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
                             op->getValue()->getValueID() == Value::ConstantArrayVal) {
                         program_memory = mem_operand;
-                    }*/
+                    }*//*
                 else if (num_memoper == 1) {
+                    bool SP_source = MI.getOperand(MI.getNumOperands() - 2).isReg() &&
+                                  MI.getOperand(MI.getNumOperands() - 2).getReg() == MSP430::R14 &&
+                                  MI.getOperand(MI.getNumOperands() - 1).isImm();
+                    bool SP_dest = MI.getOperand(0).isReg() &&
+                                   MI.getOperand(0).getReg() == MSP430::R14 &&
+                                   MI.getOperand(1).isImm();
                     if(num_oper >= 2) {
                         // INS Imm(R1), ..
                         // or
                         // INS .., Imm(R1)
-                        if (MI.getOperand(MI.getNumOperands() - 2).isReg() &&
-                            MI.getOperand(MI.getNumOperands() - 2).getReg() == MSP430::SP &&
-                            MI.getOperand(MI.getNumOperands() - 1).isImm()) {
-                            BuildMI(*BB, MI, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(17);
+                        if (! (SP_source || SP_dest)) {
+                            result = "deny";
+                            assert(false && "Only data memory is supported");
+                        } else {
+                            //BuildMI(*BB, MI, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(19);
                         }
-                        if (MI.getOperand(0).isReg() &&
-                            MI.getOperand(0).getReg() == MSP430::SP &&
-                            MI.getOperand(1).isImm()) {
-                            BuildMI(*BB, MI, DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(18);
-                        }
+
                     }
                 } else if (num_memoper == 2) {
                     // INS Imm(R1), ..
@@ -1395,12 +1420,40 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineB
                 else {
                     result = "deny";
                     assert(false && "Only data memory is supported");
-                }
+                }*/
                 mem_operand++;
             }
 
         }
     }
+    /*switch (num_memoper) {
+        case 0:
+            if (MI.getOperand(num_oper - 2).isReg()) {
+                if (MI.getOperand(num_oper - 1).isReg()) {
+                    // INS r., r.
+                    instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                } else if (MI.getOperand(num_oper - 1).isImm() || MI.getOperand(num_oper - 1).isCImm() ||
+                           MI.getOperand(num_oper - 1).isFPImm()) {
+                    // INS #const, r.
+                    instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
+                }
+            }
+            break;
+        case 1:
+            if ((MI.getOperand(num_oper - 1).isImm() || MI.getOperand(num_oper - 1).isCImm() ||
+                MI.getOperand(num_oper - 1).isFPImm()) &&
+                !MI.getOperand(num_oper - 2).isReg() &&
+                    !MI.getOperand(num_oper - 2).isSymbol()) {
+                instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pd");
+            } else {
+                if (data_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                //else if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
+            }
+            break;
+        case 2:
+            instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+            break;
+    }*/
     return result;
 
 }
@@ -1408,15 +1461,18 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineB
 
 
 StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegionsInstr(MachineInstr &MI) {
+    //! [Future] Warning: work on the code beneath was aborted due to timing restrictions, it is WIP,
+    //! but might serve as a starting point in the future
     int data_memory = -1;
+    int program_memory = -1;
     int mem_operand = 0;
     for (auto op : MI.memoperands()) {
 
         if (op->getValue()->getValueID() == Value::GlobalVariableVal){
             data_memory = mem_operand;
         }
-            /// The code beneath might be helpful for checking program memory accesses
-            /*else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal ||
+            /// [Future] The code beneath might be helpful for checking program memory accesses
+            else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal ||
                     op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
                     op->getValue()->getValueID() == Value::ConstantFirstVal ||
                     op->getValue()->getValueID() == Value::ConstantLastVal ||
@@ -1434,7 +1490,7 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegionsInstr(MachineInstr &M
                     op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
                     op->getValue()->getValueID() == Value::ConstantArrayVal) {
                 program_memory = mem_operand;
-            }*/
+            }
         else {
             assert(false && "Only data memory is supported");
         }
@@ -1463,8 +1519,8 @@ StringRef MSP430DMADefenderPass::CheckAccessedMemoryRegionsInstr(MachineInstr &M
                 !MI.getOperand(num_oper - 2).isSymbol()) {
                 return "pd";
             } else {
-                /*if (data_memory == 0) */ return "dd";
-                //else if (per_memory == 0) instr_class = TII->getInstrMemTraceClass(nullptr, MI, "pepe");
+                return "dd";
+
             }
             break;
         case 2:
@@ -2025,10 +2081,11 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
             //       types of instruction when no call has been detected
             if (! isCall) {
                 auto &RI = *MII[Ref]++;
-                /*StringRef memregs = CheckAccessedMemoryRegionsInstr(RI);
-                auto RIL = TII->getInstrMemTraceClass(nullptr, RI, memregs);*/
-                auto RIL = TII->getInstrLatency(nullptr, RI);
-                LLVM_DEBUG(dbgs() << " " << RI << " (memtrace=" << RIL << ")\n");
+                //! [Future] When multiple memory regions are supported in the future, this function call could
+                //! ensure that getInstrMemTraceClass is called with the correct combination iso "dd" default
+                //StringRef memregs = CheckAccessedMemoryRegionsInstr(RI);
+                auto RITr = TII->getInstrMemTraceClass(nullptr, RI, "dd");
+                LLVM_DEBUG(dbgs() << " " << RI << " (memtrace=" << RITr << ")\n");
                 for (auto BB : L) {
                     if (BB != Ref) {
                         LLVM_DEBUG(dbgs() << "  " << GetName(BB) << ": ");
@@ -2038,12 +2095,6 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                             if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
                                 // MOV @R3, R3
                                 BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rn), MSP430::CG).addReg(MSP430::CG);
-                                MII[Ref]++;
-                            } else if (RI.getDesc().getOpcode() == 378) { // Br
-                                // MOV #8, R3
-                                // MOV #8, R3
-                                BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
-                                BuildMI(*Ref, MII[Ref], DL, TII->get(MSP430::MOV16rc), MSP430::CG).addImm(8);
                                 MII[Ref]++;
                             }
                         } else if (MII[BB] == MTI[BB]) {
@@ -2055,11 +2106,9 @@ void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
                             }
                         } else {
                             auto &MI = *MII[BB];
-                            /*StringRef memregs = CheckAccessedMemoryRegionsInstr(RI);
-                            auto MIL = TII->getInstrMemTraceClass(nullptr, MI, memregs);*/
-                            auto MIL = TII->getInstrLatency(nullptr, MI);
-                            LLVM_DEBUG(dbgs() << MI << " (memtrace=" << MIL << "): ");
-                            if (RIL != MIL) {
+                            auto MITr = TII->getInstrMemTraceClass(nullptr, MI, "dd");
+                            LLVM_DEBUG(dbgs() << MI << " (memtrace=" << MITr << "): ");
+                            if (RITr != MITr) {
                                 LLVM_DEBUG(dbgs() << "insert nop (non-matching-latency)");
                                 CompensateInstr(RI, *BB, MII[BB], RData, RProgram, RPeriph);
                                 if (RI.getDesc().getOpcode() == 461 || RI.getDesc().getOpcode() == 462) { // PUSH16r or PUSH8r
@@ -2633,6 +2682,7 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
     auto instr_class = TII->getInstrMemTraceClass(nullptr, MI, "dd");
     unsigned int num_oper = MI.getNumOperands();
     unsigned  int num_memoper = MI.getNumMemOperands();
+
     int data_memory = -1;
     int no_data_memory = 0;
     int program_memory = -1;
@@ -2641,39 +2691,6 @@ void MSP430DMADefenderPass::CompensateInstr(const MachineInstr &MI,
     int mem_operand = 0;
     DebugLoc DL;
 
-    /// TODO: this is not completely correct yet
-    /*for (auto op : MI.memoperands()) {
-
-        if (op->getValue()->getValueID() == Value::GlobalVariableVal){
-            data_memory = mem_operand;
-            no_data_memory += 1;
-        }
-        /// The code beneath might be helpful for checking program memory accesses
-        /*else if (op->getValue()->getValueID() == Value::ConstantAggregateLastVal ||
-                op->getValue()->getValueID() == Value::ConstantAggregateFirstVal ||
-                op->getValue()->getValueID() == Value::ConstantFirstVal ||
-                op->getValue()->getValueID() == Value::ConstantLastVal ||
-                op->getValue()->getValueID() == Value::ConstantDataFirstVal ||
-                op->getValue()->getValueID() == Value::ConstantDataLastVal ||
-                op->getValue()->getValueID() == Value::ConstantExprVal ||
-                op->getValue()->getValueID() == Value::ConstantVectorVal ||
-                op->getValue()->getValueID() == Value::ConstantTokenNoneVal ||
-                op->getValue()->getValueID() == Value::ConstantStructVal ||
-                op->getValue()->getValueID() == Value::ConstantPointerNullVal ||
-                op->getValue()->getValueID() == Value::ConstantFPVal ||
-                op->getValue()->getValueID() == Value::ConstantDataVectorVal ||
-                op->getValue()->getValueID() == Value::ConstantDataArrayVal ||
-                op->getValue()->getValueID() == Value::ConstantIntVal||
-                op->getValue()->getValueID() == Value::ConstantAggregateZeroVal ||
-                op->getValue()->getValueID() == Value::ConstantArrayVal) {
-            program_memory = mem_operand;
-        }*/
-        /*else {
-            llvm_unreachable("can't support pointers");
-        }
-
-        mem_operand++;
-    }*/
     /*switch (num_memoper) {
         case 0:
             if (MI.getOperand(num_oper - 2).isReg()) {
@@ -3189,10 +3206,10 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                     Successors Succs;
                     Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
                     std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
-                    assert(CheckAccessedMemoryRegions(Succs.Succs, TII) == "allow" && "unsupported memory regions accessed");
+
 
                     assert(UnusedRegs.size() >= 3);
-                    if (UnusedRegs.size() >= 3) {
+                    if (UnusedRegs.size() >= 3 && CheckAccessedMemoryRegions(Succs.Succs, TII)) {
                         // PUSH RData
                         // MOV #0x0402, RData
                         // PUSH RProgram
@@ -3201,6 +3218,7 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                         // MOV #0x0010, RPeriph
                         auto I = BBI.BB->begin();
                         for (; I->getDesc().getOpcode() != 432; ++I) {}
+
                         // MOV #0x0010, RPeriph
                         BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                                 TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0X0010);
@@ -3227,7 +3245,7 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                         // POP RPeriph
                         BuildMI(*ExitOfSR, ExitOfSR->begin(), BBI.BB->findDebugLoc(BBI.BB->end()), TII->get(MSP430::POP16r), UnusedRegs[2]);
                     } else {
-                        llvm_unreachable("Cannot find three unused registers to make dummies with");
+                        assert(false &&"Cannot find three unused registers to make dummies with");
                     }
                 }
             } else if (L->getParentLoop() == Loop) {
@@ -3972,13 +3990,10 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
             auto ExitOfSR = GetExitOfSensitiveBranch(BBI.BB);
             Successors Succs;
             Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
-            //! TODO: Make this a set of unused registers and delete UnusedReg. The remaining regs can be used in
-            //! CheckAccessedMemoryRegions()
             std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
-            assert(CheckAccessedMemoryRegions(Succs.Succs, TII) == "allow" && "unsupported memory regions accessed");
 
             assert(UnusedRegs.size() >= 3);
-            if (UnusedRegs.size() >= 3) {
+            if (UnusedRegs.size() >= 3 && CheckAccessedMemoryRegions(Succs.Succs, TII)) {
                 // PUSH RData
                 // MOV #0x0402, RData
                 // PUSH RProgram
@@ -3990,6 +4005,7 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
                 // POP RData
                 auto I = BBI.BB->begin();
                 for ( ; I->getDesc().getOpcode() != 432; ++I) {}
+
                 BuildMI(*(BBI.BB), --I, BBI.BB->findDebugLoc(BBI.BB->end()),
                         TII->get(MSP430::MOV16rc), UnusedRegs[2]).addImm(0x0010);
                 // PUSH RPeriph
