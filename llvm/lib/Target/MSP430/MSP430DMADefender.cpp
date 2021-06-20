@@ -196,12 +196,13 @@ namespace {
         Successors
         ComputeSuccessors(std::vector<MachineBasicBlock *> L, MachineBasicBlock *Exit);
 
-        std::vector<Register> FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs);
+        std::set<MachineBasicBlock *> BBsInSensitiveRegion(MachineBasicBlock *Start, MachineBasicBlock *End);
+        std::vector<Register> FindUnusedRegisters(std::set<MachineBasicBlock *> BBs);
         void AlignNonTerminatingInstructions(std::vector<MachineBasicBlock *> L, Register RData, Register RProgram, Register RPeriph);
         void CanonicalizeTerminatingInstructions(MachineBasicBlock *MBB);
         void AlignTwoWayBranch(MachineBasicBlock &MBB);
 
-        bool CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs, const TargetInstrInfo *TII);
+        bool CheckAccessedMemoryRegions(std::set<MachineBasicBlock *> BBs, const TargetInstrInfo *TII);
         StringRef CheckAccessedMemoryRegionsInstr(MachineInstr &MI);
         // Returns information about sensitivity of machine instructions and basic
         //  block info.
@@ -1060,7 +1061,7 @@ static void Build_1_0_0_1(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
 static void Build_2_00_00_11(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // MOV #42, R3
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(42);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16ri), MSP430::CG).addImm(41);
 }
 
 
@@ -1231,12 +1232,12 @@ static void Build_5_10001_00000_10001(MachineBasicBlock &MBB, MachineBasicBlock:
 static void Build_5_00101_00000_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
     DebugLoc DL;
     // ADD #42, 2(RPeriph)
-    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), RPeriph).addImm(2).addImm(42);
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), RPeriph).addImm(2).addImm(41);
 }
 static void Build_5_00001_00000_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph) {
     DebugLoc DL;
     // MOV #42, 2(RPeriph)
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mi), RPeriph).addImm(2).addImm(42);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mi), RPeriph).addImm(2).addImm(41);
 }
 static void Build_5_00101_10000_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RPeriph, Register RData) {
     DebugLoc DL;
@@ -1262,7 +1263,7 @@ static void Build_5_10000_00001_10001(MachineBasicBlock &MBB, MachineBasicBlock:
 static void Build_5_00000_00101_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // ADD #42, 2(RData)
-    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), UnusedReg).addImm(2).addImm(42);
+    BuildMI(MBB, I, DL, TII->get(MSP430::ADD16mi), UnusedReg).addImm(2).addImm(41);
 }
 
 static void Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register RData) {
@@ -1274,7 +1275,7 @@ static void Build_5_00000_10101_10001(MachineBasicBlock &MBB, MachineBasicBlock:
 static void Build_5_00000_00001_11001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
     DebugLoc DL;
     // MOV #42, 2(RData)
-    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mi), UnusedReg).addImm(2).addImm(42);
+    BuildMI(MBB, I, DL, TII->get(MSP430::MOV16mi), UnusedReg).addImm(2).addImm(41);
 }
 
 static void Build_5_00000_10001_10001(MachineBasicBlock &MBB, MachineBasicBlock::iterator I, const TargetInstrInfo *TII, Register UnusedReg) {
@@ -1325,7 +1326,7 @@ static void Build_6_000000_000001_111001(MachineBasicBlock &MBB, MachineBasicBlo
 }
 
 
-bool MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::vector<MachineBasicBlock *> BBs,
+bool MSP430DMADefenderPass::CheckAccessedMemoryRegions(std::set<MachineBasicBlock *> BBs,
                                                        const TargetInstrInfo *TII) {
 
 
@@ -1728,7 +1729,7 @@ void MSP430DMADefenderPass::AlignTwoWayBranch(MachineBasicBlock &MBB) {
 // Returns
 //   1) when one of the direct successors of MBBs represents the header of a
 //        loop,
-//      - Successors.Loop points to the hedear of the detected loop
+//      - Successors.Loop points to the header of the detected loop
 //      - Successors.Succs represents the union of all successors of all MBBs
 //         modulo the detected Loop header
 //     The CFG will not be mutated.
@@ -2016,6 +2017,29 @@ static void DumpMF(MachineFunction &MF) {
   LLVM_DEBUG(dbgs() << "==========================\n");
 }
 #endif
+std::set<MachineBasicBlock *> MSP430DMADefenderPass::BBsInSensitiveRegion(MachineBasicBlock *Start,
+                                                                             MachineBasicBlock *End) {
+    std::set<MachineBasicBlock *> BBsToDo;
+    std::set<MachineBasicBlock *> result;
+    result.insert(Start);
+    Successors succs = ComputeSuccessors({Start},End);
+    std::copy(succs.Succs.begin(),succs.Succs.end(),std::inserter(BBsToDo,BBsToDo.end()));
+
+    while (BBsToDo.size() != 0) {
+        auto nextBB = BBsToDo.begin();
+        BBsToDo.erase(nextBB);
+        result.insert(*nextBB);
+        succs = ComputeSuccessors({*nextBB},End);
+        for (auto BB : succs.Succs) {
+            if (BBsToDo.find(BB) == BBsToDo.end()) {
+                BBsToDo.insert(BB);
+            }
+
+        }
+    }
+    result.insert(End);
+    return result;
+}
 
 void MSP430DMADefenderPass::AlignNonTerminatingInstructions(
         std::vector<MachineBasicBlock *> L, Register RData, Register RProgram, Register RPeriph) {
@@ -3203,13 +3227,13 @@ void MSP430DMADefenderPass::AlignContainedRegions(MachineLoop *Loop)
                 if (IsSecretDependent(&BBI)) {
                     // Deal with this "directly contained" sensitive branch
                     auto ExitOfSR = GetExitOfSensitiveBranch(BBI.BB);
-                    Successors Succs;
-                    Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
-                    std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
+                    std::set<MachineBasicBlock *> BBsInSensRegion;
+                    BBsInSensRegion = BBsInSensitiveRegion(BBI.BB, ExitOfSR);
+                    std::vector<Register> UnusedRegs = FindUnusedRegisters(BBsInSensRegion);
 
 
                     assert(UnusedRegs.size() >= 3);
-                    if (UnusedRegs.size() >= 3 && CheckAccessedMemoryRegions(Succs.Succs, TII)) {
+                    if (UnusedRegs.size() >= 3 && CheckAccessedMemoryRegions(BBsInSensRegion, TII)) {
                         // PUSH RData
                         // MOV #0x0402, RData
                         // PUSH RProgram
@@ -3331,7 +3355,9 @@ MSP430DMADefenderPass::AlignFingerprint(
         // TODO: Requires changes to the computation of the Result vector
     }
 
-    std::vector<Register> UnusedRegs = FindUnusedRegisters(MBBs);
+    std::set<MachineBasicBlock *> BBset;
+    std::copy(MBBs.begin(),MBBs.end(),std::inserter(BBset,BBset.end()));
+    std::vector<Register> UnusedRegs = FindUnusedRegisters(BBset);
     assert(UnusedRegs.size() >= 3);
 
 
@@ -3633,7 +3659,7 @@ void MSP430DMADefenderPass::RedoAnalysisPasses() {
 // This function checks whether any general purpose register is used in the given BasicBlocks
 // of some sensitive region.
 // It returns the first register that is found not to be used in the given BB, starting from R4.
-std::vector<Register> MSP430DMADefenderPass::FindUnusedRegisters(std::vector<MachineBasicBlock *> BBs) {
+std::vector<Register> MSP430DMADefenderPass::FindUnusedRegisters(std::set<MachineBasicBlock *> BBs) {
     bool used[12] = {false, false, false, false, false, false, false, false, false, false, false, false};
     std::vector<Register> regs = {MSP430::R4, MSP430::R5, MSP430::R6, MSP430::R7, MSP430::R8, MSP430::R9, MSP430::R10, MSP430::R11, MSP430::R12, MSP430::R14, MSP430::R14, MSP430::R15};
     std::vector<Register> unused_regs;
@@ -3988,12 +4014,12 @@ void MSP430DMADefenderPass::AlignSensitiveBranches() {
         if (IsSecretDependent(&BBI) && (! BBI.IsPartOfSensitiveRegion) ) {
             //! TODO this is work that also 'AlignSensitiveBranch()' does...
             auto ExitOfSR = GetExitOfSensitiveBranch(BBI.BB);
-            Successors Succs;
-            Succs = ComputeSuccessors({BBI.BB}, ExitOfSR);
-            std::vector<Register> UnusedRegs = FindUnusedRegisters(Succs.Succs);
+            std::set<MachineBasicBlock *> BBsInSensRegion;
+            BBsInSensRegion = BBsInSensitiveRegion({BBI.BB}, ExitOfSR);
+            std::vector<Register> UnusedRegs = FindUnusedRegisters(BBsInSensRegion);
 
             assert(UnusedRegs.size() >= 3);
-            if (UnusedRegs.size() >= 3 && CheckAccessedMemoryRegions(Succs.Succs, TII)) {
+            if (UnusedRegs.size() >= 3 && CheckAccessedMemoryRegions(BBsInSensRegion, TII)) {
                 // PUSH RData
                 // MOV #0x0402, RData
                 // PUSH RProgram
